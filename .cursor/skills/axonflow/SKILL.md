@@ -43,6 +43,9 @@ dotnet run --project src/AxonFlow -- item next --db .axonflow/axonflow.db --json
 dotnet run --project src/AxonFlow -- item start --db .axonflow/axonflow.db --ref AF-1 --assignee agent:composer --json
 dotnet run --project src/AxonFlow -- dep add --db .axonflow/axonflow.db --predecessor AF-1 --successor AF-2
 dotnet run --project src/AxonFlow -- validate --db .axonflow/axonflow.db --json
+dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --refresh-seconds 120
+dotnet run --project src/AxonFlow -- dashboard open --db .axonflow/axonflow.db --out dashboard
+dotnet run --project src/AxonFlow -- dashboard watch --db .axonflow/axonflow.db --out dashboard --interval 120
 ```
 
 After global install (if you publish a tool), replace `dotnet run --project src/AxonFlow --` with `axonflow`.

@@ -55,6 +55,7 @@ Default database: `.axonflow/axonflow.db` under the current working directory (o
 - `item add|update|show|list|import|start|next|complete|cancel|reopen|note add|defer`
 - `dep add|remove`
 - `tree`, `board`, `validate`, `export`
+- `dashboard emit`, `dashboard open`, `dashboard watch` — static read-only HTML + embedded snapshot (see Phase 2); **`--open`** launches the default browser after emit (ignored with **`--json`**)
 
 Use `--help` on the root or any command for details.
 
@@ -109,6 +110,31 @@ dotnet build AxonFlow.sln
 dotnet test AxonFlow.sln
 ```
 
-## Phase 2
+## Phase 2 — HTML dashboard (read-only)
 
-Read-only local **HTML dashboard** (same SQLite schema) is planned; not implemented in this milestone.
+The CLI can generate a **single static `index.html`** with an embedded JSON snapshot of the current project (all work items plus **finish-start** dependencies). Open it with a **`file://`** URL in your browser. A **`<meta http-equiv="refresh">`** reloads the page every few minutes so a long-lived tab picks up a newer file from disk.
+
+To refresh the snapshot **without** running a separate HTTP server, use a second terminal:
+
+```bash
+dotnet run --project src/AxonFlow -- dashboard watch --db .axonflow/axonflow.db --out dashboard --interval 120 --refresh-seconds 120
+```
+
+That loop rewrites `dashboard/index.html` on a cadence; the browser’s periodic full reload reads the updated file. Use **`--quiet`** to suppress repeated “Wrote …” lines.
+
+One-shot emit:
+
+```bash
+dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --refresh-seconds 180
+```
+
+Open **`index.html`** in the default browser after a successful write (same as **`emit`** with **`--open`**):
+
+```bash
+dotnet run --project src/AxonFlow -- dashboard open --db .axonflow/axonflow.db --out dashboard
+dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --open
+```
+
+With **`dashboard watch`**, use **`--open`** to open the browser once on the first emit only. **`--open`** is ignored when **`--json`** is set so scripts do not launch a browser.
+
+The UI shows **columns by status** (backlog → cancelled), **open counts**, **plan vs emergent** and **assignee** badges, and a **detail** panel with body text and predecessor refs. Generated `dashboard/index.html` is **gitignored**; the machine-local plan for this feature lives in **`plans/html-dashboard-plan.json`** for `item import --file`.

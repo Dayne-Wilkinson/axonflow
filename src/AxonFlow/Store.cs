@@ -443,6 +443,21 @@ public sealed class Store(string connectionString)
         return list;
     }
 
+    public List<(string PredecessorId, string SuccessorId, string Kind)> ListDependenciesForProject(SqliteConnection c, string projectId)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT predecessor_id, successor_id, kind FROM work_item_dependencies
+            WHERE project_id = @p;
+            """;
+        cmd.Parameters.AddWithValue("@p", projectId);
+        using var r = cmd.ExecuteReader();
+        var list = new List<(string, string, string)>();
+        while (r.Read())
+            list.Add((r.GetString(0), r.GetString(1), r.GetString(2)));
+        return list;
+    }
+
     private static WorkItemRow ReadItem(SqliteDataReader r)
     {
         int O(string name) => r.GetOrdinal(name);

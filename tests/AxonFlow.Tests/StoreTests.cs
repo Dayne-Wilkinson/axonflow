@@ -27,6 +27,18 @@ public class StoreTests
             tx.Commit();
             Assert.Equal(1, row.RefNumber);
             Assert.True(store.PredecessorsSatisfied(c, row.Id));
+
+            Assert.Empty(store.ListDependenciesForProject(c, pid));
+            using (var tx2 = c.BeginTransaction())
+            {
+                var row2 = store.InsertItem(c, tx2, new Store.WorkItemInsert(pid, null, null, null, "task", "plan", null, null,
+                    "Second", null, "backlog", 20, null, null, null, null, null, 0));
+                store.AddDependency(c, tx2, pid, row.Id, row2.Id, "finish_start");
+                tx2.Commit();
+            }
+            var deps = store.ListDependenciesForProject(c, pid);
+            Assert.Single(deps);
+            Assert.Equal(row.Id, deps[0].PredecessorId);
         }
         finally
         {
