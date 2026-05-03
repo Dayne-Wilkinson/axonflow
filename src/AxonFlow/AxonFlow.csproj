@@ -9,6 +9,11 @@
     <AssemblyName>axonflow</AssemblyName>
     <Version>0.1.0</Version>
     <InformationalVersion>0.1.0</InformationalVersion>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>axonflow</ToolCommandName>
+    <PackageId>AxonFlow</PackageId>
+    <PackageDescription>SQLite-backed hierarchical work graph CLI for agents and humans.</PackageDescription>
   </PropertyGroup>
 
   <ItemGroup>

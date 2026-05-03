@@ -38,6 +38,19 @@ dotnet run --project src/AxonFlow -- item next --json
 
 Default database: `.axonflow/axonflow.db` under the current working directory (override with `--db`).
 
+### Use the `axonflow` command (global tool)
+
+Until you install the tool, run via **`dotnet run --project src/AxonFlow --`** (examples below use that form). To put **`axonflow`** on your `PATH` as a [.NET global tool](https://learn.microsoft.com/dotnet/core/tools/global-tools):
+
+```bash
+dotnet pack src/AxonFlow/AxonFlow.csproj -c Release -o ./artifacts
+dotnet tool install --global AxonFlow --add-source ./artifacts --version 0.1.0
+```
+
+Then **`axonflow`** works from any directory (for example **`axonflow dashboard open`**). Upgrade later with **`dotnet tool update --global AxonFlow --add-source ./artifacts`** after packing a newer version, or install from NuGet if the package is published.
+
+`dashboard` still needs a subcommand, for example **`axonflow dashboard open`** or **`axonflow dashboard emit`**. Run **`axonflow dashboard --help`** for the list.
+
 ### Global options (most commands)
 
 | Option | Default | Description |
