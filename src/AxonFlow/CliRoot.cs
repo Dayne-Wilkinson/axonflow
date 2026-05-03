@@ -53,6 +53,7 @@ public static class CliRoot
         HandlersItem.Register(root);
         HandlersDep.Register(root);
         HandlersQuery.Register(root);
+        HandlersDashboard.Register(root);
 
         return root;
     }

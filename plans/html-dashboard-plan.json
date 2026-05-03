@@ -1,0 +1,132 @@
+{
+  "items": [
+    {
+      "tempId": "epic",
+      "clientKey": "af-html-epic",
+      "type": "epic",
+      "title": "Phase 2: read-only HTML dashboard (local file, no HTTP server)",
+      "body": "Users see a kanban by status, counts, stream/assignee badges, item detail, and dependency context. Data comes from the same SQLite DB via a static index.html with embedded snapshot; meta refresh reloads the page; dashboard watch rewrites the file on an interval.",
+      "stream": "plan",
+      "priority": 10,
+      "status": "in_progress"
+    },
+    {
+      "tempId": "featSnap",
+      "clientKey": "af-html-feat-snapshot",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "Snapshot: items + finish-start dependencies as JSON",
+      "stream": "plan",
+      "priority": 20,
+      "status": "in_progress",
+      "pathHints": ["src/AxonFlow/Store.cs", "src/AxonFlow/HandlersDashboard.cs"]
+    },
+    {
+      "tempId": "featUi",
+      "clientKey": "af-html-feat-ui",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "Static UI: columns by status, click for detail, safe text rendering",
+      "stream": "plan",
+      "priority": 21,
+      "status": "done",
+      "pathHints": ["src/AxonFlow/HandlersDashboard.cs"]
+    },
+    {
+      "tempId": "featOps",
+      "clientKey": "af-html-feat-ops",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "Local workflow: file:// + meta refresh + dashboard watch",
+      "stream": "plan",
+      "priority": 22,
+      "status": "done",
+      "pathHints": ["src/AxonFlow/HandlersDashboard.cs"]
+    },
+    {
+      "tempId": "featDocs",
+      "clientKey": "af-html-feat-docs",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "Documentation and repo hygiene for dashboard output",
+      "stream": "plan",
+      "priority": 23,
+      "status": "ready",
+      "pathHints": ["README.md", ".gitignore"]
+    },
+    {
+      "tempId": "tDeps",
+      "clientKey": "af-html-task-deps-store",
+      "type": "task",
+      "parentTempId": "featSnap",
+      "title": "Add Store.ListDependenciesForProject for dashboard snapshot",
+      "stream": "plan",
+      "priority": 30,
+      "status": "done",
+      "pathHints": ["src/AxonFlow/Store.cs"]
+    },
+    {
+      "tempId": "tEmit",
+      "clientKey": "af-html-task-emit",
+      "type": "task",
+      "parentTempId": "featSnap",
+      "title": "Implement dashboard emit (embedded JSON + meta refresh)",
+      "stream": "plan",
+      "priority": 31,
+      "status": "done",
+      "pathHints": ["src/AxonFlow/HandlersDashboard.cs", "src/AxonFlow/CliRoot.cs"]
+    },
+    {
+      "tempId": "tWatch",
+      "clientKey": "af-html-task-watch",
+      "type": "task",
+      "parentTempId": "featOps",
+      "title": "Implement dashboard watch --interval (rewrite index.html on cadence)",
+      "stream": "plan",
+      "priority": 32,
+      "status": "done",
+      "pathHints": ["src/AxonFlow/HandlersDashboard.cs"]
+    },
+    {
+      "tempId": "tUi",
+      "clientKey": "af-html-task-board-ui",
+      "type": "task",
+      "parentTempId": "featUi",
+      "title": "HTML/CSS/JS board: status columns, badges, detail + predecessors",
+      "stream": "plan",
+      "priority": 33,
+      "status": "done",
+      "pathHints": ["src/AxonFlow/HandlersDashboard.cs"]
+    },
+    {
+      "tempId": "tReadme",
+      "clientKey": "af-html-task-readme",
+      "type": "task",
+      "parentTempId": "featDocs",
+      "title": "README: Phase 2 dashboard commands, file:// + watch usage",
+      "stream": "plan",
+      "priority": 40,
+      "status": "ready",
+      "pathHints": ["README.md"]
+    },
+    {
+      "tempId": "tTest",
+      "clientKey": "af-html-task-test",
+      "type": "task",
+      "parentTempId": "featSnap",
+      "title": "Integration test: emit produces HTML containing valid snapshot JSON",
+      "stream": "plan",
+      "priority": 41,
+      "status": "backlog",
+      "pathHints": ["tests/AxonFlow.Tests"]
+    }
+  ],
+  "dependencies": [
+    { "predecessorTempId": "tDeps", "successorTempId": "tEmit", "kind": "finish_start" },
+    { "predecessorTempId": "tEmit", "successorTempId": "tWatch", "kind": "finish_start" },
+    { "predecessorTempId": "tEmit", "successorTempId": "tUi", "kind": "finish_start" },
+    { "predecessorTempId": "tWatch", "successorTempId": "tReadme", "kind": "finish_start" },
+    { "predecessorTempId": "tUi", "successorTempId": "tReadme", "kind": "finish_start" },
+    { "predecessorTempId": "tEmit", "successorTempId": "tTest", "kind": "finish_start" }
+  ]
+}
