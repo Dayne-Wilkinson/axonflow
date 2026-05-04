@@ -44,7 +44,7 @@ Until you install the tool, run via **`dotnet run --project src/AxonFlow --`** (
 
 ```bash
 dotnet pack src/AxonFlow/AxonFlow.csproj -c Release -o ./artifacts
-dotnet tool install --global AxonFlow --add-source ./artifacts --version 0.1.3
+dotnet tool install --global AxonFlow --add-source ./artifacts --version 0.1.4
 ```
 
 Then **`axonflow`** works from any directory (for example **`axonflow dashboard open`**). Upgrade later with **`dotnet tool update --global AxonFlow --add-source ./artifacts`** after packing a newer version, or install from NuGet if the package is published.

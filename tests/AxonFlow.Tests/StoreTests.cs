@@ -39,6 +39,14 @@ public class StoreTests
             var deps = store.ListDependenciesForProject(c, pid);
             Assert.Single(deps);
             Assert.Equal(row.Id, deps[0].PredecessorId);
+
+            store.PatchItem(c, null, row.Id, null, null, null, null, null, null, null, null, false, null, null, "hello body");
+            var patched = store.GetItemById(c, row.Id)!;
+            Assert.Equal("hello body", patched.Body);
+
+            store.PatchItem(c, null, row.Id, null, null, null, null, null, null, null, null, false, null, null, "");
+            var cleared = store.GetItemById(c, row.Id)!;
+            Assert.Null(cleared.Body);
         }
         finally
         {
