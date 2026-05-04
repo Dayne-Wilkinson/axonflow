@@ -49,6 +49,29 @@ dotnet tool install --global AxonFlow --add-source ./artifacts --version 0.1.0
 
 Then **`axonflow`** works from any directory (for example **`axonflow dashboard open`**). Upgrade later with **`dotnet tool update --global AxonFlow --add-source ./artifacts`** after packing a newer version, or install from NuGet if the package is published.
 
+**Quick setup from a clone** (packs into `./artifacts` and installs or updates the global tool; reads **`Version`** from [`src/AxonFlow/AxonFlow.csproj`](src/AxonFlow/AxonFlow.csproj)):
+
+```powershell
+.\scripts\install-global.ps1
+```
+
+From **`scripts\`**, use **`.\install-global.ps1`** (PowerShell requires the **`.\`** prefix to run a script in the current directory; `install-global.ps1` alone will not resolve).
+
+If you see **“not digitally signed”** / execution policy errors, either run the batch wrapper (no policy change): **`scripts\install-global.cmd`** from the repo root, or invoke PowerShell once with bypass:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-global.ps1
+```
+
+To allow local scripts for your user account (optional): **`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`** — see [about_Execution_Policies](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_execution_policies).
+
+```bash
+chmod +x scripts/install-global.sh
+./scripts/install-global.sh
+```
+
+Ensure **`%USERPROFILE%\.dotnet\tools`** (Windows) or **`~/.dotnet/tools`** (macOS/Linux) is on your **`PATH`** (the .NET SDK installer usually adds it).
+
 `dashboard` still needs a subcommand, for example **`axonflow dashboard open`** or **`axonflow dashboard emit`**. Run **`axonflow dashboard --help`** for the list.
 
 ### Global options (most commands)
@@ -68,7 +91,7 @@ Then **`axonflow`** works from any directory (for example **`axonflow dashboard 
 - `item add|update|show|list|import|start|next|complete|cancel|reopen|note add|defer`
 - `dep add|remove`
 - `tree`, `board`, `validate`, `export`
-- `dashboard emit`, `dashboard open`, `dashboard watch` — static read-only HTML + embedded snapshot (see Phase 2); **`--open`** launches the default browser after emit (ignored with **`--json`**)
+- `dashboard emit`, `dashboard open`, `dashboard watch` — static read-only HTML + embedded snapshot (see Phase 2); **`--open`** launches the default browser after emit (ignored with **`--json`**); **`--all-projects`** embeds all DB projects (schema v2) with an in-page picker
 
 Use `--help` on the root or any command for details.
 
@@ -150,4 +173,8 @@ dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db -
 
 With **`dashboard watch`**, use **`--open`** to open the browser once on the first emit only. **`--open`** is ignored when **`--json`** is set so scripts do not launch a browser.
 
-The UI shows **columns by status** (backlog → cancelled), **open counts**, **plan vs emergent** and **assignee** badges, and a **detail** panel with body text and predecessor refs. Generated `dashboard/index.html` is **gitignored**; the machine-local plan for this feature lives in **`plans/html-dashboard-plan.json`** for `item import --file`.
+The UI shows **columns by status** (backlog → cancelled), **open counts**, **plan vs emergent** and **assignee** badges, and a **detail** panel with body text and predecessor refs. Use **`--all-projects`** to embed **every** project in the DB (**schema v2**) and show an in-page **project** picker (initial selection follows global **`--project`**). Generated `dashboard/index.html` is **gitignored**; machine-local plans live under **`plans/`** for `item import --file`.
+
+```bash
+dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --all-projects --open
+```
