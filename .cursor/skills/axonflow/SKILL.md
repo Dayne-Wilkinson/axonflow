@@ -19,8 +19,11 @@ disable-model-invocation: true
 
 ## Paths
 
-- Prefer repo-local DB: `.axonflow/axonflow.db`.
-- **Always pass `--db` with an absolute or repo-relative path** when running from uncertain `cwd`.
+- **Choosing `--db` when the user did not specify one:** resolve in this order (use the first path whose file exists):
+  1. **Repo / cwd local** — `.axonflow/axonflow.db` under the process current working directory (same default the CLI uses: `Paths.DefaultDbPath()`).
+  2. **User-level graph** — `~/.axonflow/axonflow.db` (Windows: `%USERPROFILE%\.axonflow\axonflow.db`). Typical when the backlog was created from a global `axonflow` install or any shell whose cwd is not the repo. `init` creates this tree if you point `--db` there.
+- A **.NET global tool** install puts `axonflow` on `PATH` under `~/.dotnet/tools` (Windows: `%USERPROFILE%\.dotnet\tools`); the **database is not stored there**—only the executable.
+- **Prefer passing `--db` explicitly** (absolute path, or a path relative to the known repo root) whenever `cwd` might not be the workspace you mean.
 
 ## Loop
 
@@ -47,6 +50,9 @@ dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db -
 dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --all-projects
 dotnet run --project src/AxonFlow -- dashboard open --db .axonflow/axonflow.db --out dashboard
 dotnet run --project src/AxonFlow -- dashboard watch --db .axonflow/axonflow.db --out dashboard --interval 120
+# User-level DB (same file global workflows often use), if .axonflow under cwd does not exist:
+#   Windows:   --db %USERPROFILE%\.axonflow\axonflow.db
+#   macOS/Linux: --db ~/.axonflow/axonflow.db
 .\scripts\install-global.ps1   # or scripts\install-global.cmd if execution policy blocks .ps1
 ./scripts/install-global.sh
 ```
