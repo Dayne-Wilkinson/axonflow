@@ -393,27 +393,8 @@ internal static class HandlersItem
         var row = Resolve(store, c, pid, id, @ref);
         if (row is null) { Err(ctx, "not_found", "Item not found"); return; }
         var json = ctx.ParseResult.GetValueForOption(CliRoot.JsonOption);
-        var preds = store.GetPredecessorIds(c, row.Id).Select(pidPred =>
-        {
-            var p = store.GetItemById(c, pidPred);
-            return p is null ? null : new { id = p.Id, @ref = $"{store.GetProjectRefPrefix(c, pid)}-{p.RefNumber}", p.Title, itemStatus = p.Status };
-        }).Where(x => x is not null).ToList();
-        string? blockedBy = null;
-        if (!string.IsNullOrEmpty(row.BlockedById))
-        {
-            var b = store.GetItemById(c, row.BlockedById);
-            if (b is not null)
-                blockedBy = JsonSerializer.Serialize(new { id = b.Id, @ref = $"{store.GetProjectRefPrefix(c, pid)}-{b.RefNumber}", b.Title, b.Type });
-        }
-        var blockingPreds = preds.Where(p => p!.itemStatus is not ("done" or "cancelled")).ToList();
         if (json)
-        {
-            var o = new Dictionary<string, object?> { ["item"] = ItemJson.ItemDto(store, c, row) };
-            o["blockingPredecessors"] = blockingPreds;
-            if (blockedBy is not null) o["blockedBy"] = JsonSerializer.Deserialize<object>(blockedBy);
-            if (notes) o["recentNotes"] = store.ListNotes(c, row.Id, notesLimit).Select(ItemJson.NoteDto).ToList();
-            JsonOut.WriteOk(o);
-        }
+            JsonOut.WriteOk(ItemJson.BuildItemShowEnvelope(store, c, pid, row, notes, notesLimit));
         else
         {
             JsonOut.WriteText($"{store.GetProjectRefPrefix(c, pid)}-{row.RefNumber}\t{row.Status}\t{row.Title}");

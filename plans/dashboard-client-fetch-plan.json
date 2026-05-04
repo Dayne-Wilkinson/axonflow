@@ -1,0 +1,231 @@
+{
+  "items": [
+    {
+      "tempId": "epic",
+      "clientKey": "af-dash-epic-client-fetch",
+      "type": "epic",
+      "title": "Dashboard: static shell, live data, simpler UI",
+      "body": "Goal: `dashboard open` only opens the HTML shell (no CLI-time snapshot generation). The page loads data from the DB when opened, respects project selection, and refreshes via client-side polling and/or browser refresh.\n\nCurrent behavior (baseline): `dashboard emit`/`open` call RunEmit — read SQLite, build JSON snapshot (schema v1 or v2 with --all-projects), embed in `<script type=\"application/json\" id=\"af-snapshot\">`, write index.html. Meta http-equiv refresh reloads the whole page. `dashboard watch` re-runs emit on an interval. All data is baked into the file at emit time; browsers cannot read SQLite over file:// without a separate bridge (e.g. localhost HTTP API).",
+      "stream": "plan",
+      "priority": 10,
+      "status": "backlog"
+    },
+    {
+      "tempId": "feat_current",
+      "clientKey": "af-dash-feat-current-behavior",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "Document current dashboard pipeline",
+      "body": "Capture how emit/open/watch interact (HandlersDashboard RunEmit, BuildHtml, embedded JSON, meta refresh, multi-project picker filtering client-side only on baked snapshot).",
+      "stream": "plan",
+      "priority": 20,
+      "status": "backlog",
+      "pathHints": ["src/AxonFlow/HandlersDashboard.cs", "tests/AxonFlow.Tests/DashboardEmitTests.cs"]
+    },
+    {
+      "tempId": "feat_arch",
+      "clientKey": "af-dash-feat-architecture",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "Architecture: bridge browser to SQLite",
+      "body": "Decide how the page fetches DB state: e.g. read-only localhost HTTP server (new subcommand such as `dashboard serve`) exposing JSON aligned with current snapshot shape; document security (loopback-only, no remote bind). Alternatives (WASM + user-picked file, etc.) only if explicitly chosen after tradeoffs.",
+      "stream": "plan",
+      "priority": 21,
+      "status": "backlog"
+    },
+    {
+      "tempId": "feat_cli",
+      "clientKey": "af-dash-feat-cli-ux",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "CLI UX: open vs generate vs serve",
+      "body": "Specify commands: e.g. `dashboard open` opens static/cached index without RunEmit; optional one-time template install; `dashboard serve` (or equivalent) binds DB + static + API; keep or narrow `emit` for offline snapshot export if still needed.",
+      "stream": "plan",
+      "priority": 22,
+      "status": "backlog"
+    },
+    {
+      "tempId": "feat_api",
+      "clientKey": "af-dash-feat-read-api",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "Read-only HTTP API + static assets",
+      "body": "Implement loopback server and route(s) returning snapshot JSON (project-scoped or multi-project v2 shape) reusing Store/query logic from emit path where possible; serve HTML/JS/CSS without embedding live data at write time.",
+      "stream": "plan",
+      "priority": 23,
+      "status": "backlog"
+    },
+    {
+      "tempId": "feat_fe",
+      "clientKey": "af-dash-feat-frontend",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "Front-end: fetch on load, project picker, refresh",
+      "body": "Replace sole reliance on embedded snapshot with fetch() to API; on load and on project change reload data; add JS timer auto-refresh and/or rely on user F5; remove or gate meta refresh when in served mode; clear loading/error states.",
+      "stream": "plan",
+      "priority": 24,
+      "status": "backlog"
+    },
+    {
+      "tempId": "feat_ui",
+      "clientKey": "af-dash-feat-ui-simplify",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "Simpler dashboard presentation",
+      "body": "Reduce visual and interaction complexity (layout, columns, copy, detail panel) while keeping core board + item detail usable.",
+      "stream": "plan",
+      "priority": 25,
+      "status": "backlog"
+    },
+    {
+      "tempId": "feat_qa",
+      "clientKey": "af-dash-feat-quality",
+      "type": "feature",
+      "parentTempId": "epic",
+      "title": "Tests and documentation",
+      "body": "Extend or add tests for new HTTP surface and/or emit split; update README and AxonFlow skill for dashboard workflow (open vs serve vs watch vs emit).",
+      "stream": "plan",
+      "priority": 26,
+      "status": "backlog",
+      "pathHints": ["README.md", ".cursor/skills/axonflow/SKILL.md"]
+    },
+    {
+      "tempId": "t_audit",
+      "clientKey": "af-dash-task-audit-handlers",
+      "type": "task",
+      "parentTempId": "feat_current",
+      "title": "Trace RunEmit → snapshot JSON → BuildHtml embedding and refresh story",
+      "stream": "plan",
+      "priority": 30,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_file_proto",
+      "clientKey": "af-dash-task-file-protocol",
+      "type": "task",
+      "parentTempId": "feat_current",
+      "title": "Note file:// constraints vs fetch-to-localhost in plan notes",
+      "stream": "plan",
+      "priority": 31,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_tradeoffs",
+      "clientKey": "af-dash-task-tradeoffs",
+      "type": "task",
+      "parentTempId": "feat_arch",
+      "title": "Write chosen approach: localhost API vs alternatives + threat model",
+      "stream": "plan",
+      "priority": 32,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_contract",
+      "clientKey": "af-dash-task-json-contract",
+      "type": "task",
+      "parentTempId": "feat_arch",
+      "title": "Freeze JSON response shape (v2-compatible or simplified) and query params",
+      "stream": "plan",
+      "priority": 33,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_cli_matrix",
+      "clientKey": "af-dash-task-cli-matrix",
+      "type": "task",
+      "parentTempId": "feat_cli",
+      "title": "Command matrix: open / serve / emit / watch behavior and flags",
+      "stream": "plan",
+      "priority": 34,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_cli_help",
+      "clientKey": "af-dash-task-cli-help",
+      "type": "task",
+      "parentTempId": "feat_cli",
+      "title": "User-facing help text for new workflow",
+      "stream": "plan",
+      "priority": 35,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_listen",
+      "clientKey": "af-dash-task-loopback-listen",
+      "type": "task",
+      "parentTempId": "feat_api",
+      "title": "Implement loopback HTTP listener and static file serving",
+      "stream": "plan",
+      "priority": 36,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_routes",
+      "clientKey": "af-dash-task-snapshot-route",
+      "type": "task",
+      "parentTempId": "feat_api",
+      "title": "Snapshot route(s): default project, ?project=, --all-projects parity",
+      "stream": "plan",
+      "priority": 37,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_fetch",
+      "clientKey": "af-dash-task-fetch-load",
+      "type": "task",
+      "parentTempId": "feat_fe",
+      "title": "Boot: fetch snapshot; render board from response (no embedded JSON)",
+      "stream": "plan",
+      "priority": 38,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_picker",
+      "clientKey": "af-dash-task-picker-refresh",
+      "type": "task",
+      "parentTempId": "feat_fe",
+      "title": "Project select + debounced refetch; auto-refresh interval + manual refresh",
+      "stream": "plan",
+      "priority": 39,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_simplify_ia",
+      "clientKey": "af-dash-task-ia-pass",
+      "type": "task",
+      "parentTempId": "feat_ui",
+      "title": "IA/style pass: simpler header, board, detail",
+      "stream": "plan",
+      "priority": 40,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_tests",
+      "clientKey": "af-dash-task-tests",
+      "type": "task",
+      "parentTempId": "feat_qa",
+      "title": "Automated tests for API and/or dashboard package",
+      "stream": "plan",
+      "priority": 41,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_readme",
+      "clientKey": "af-dash-task-readme-skill",
+      "type": "task",
+      "parentTempId": "feat_qa",
+      "title": "README + SKILL: dashboard open vs serve, ports, --db",
+      "stream": "plan",
+      "priority": 42,
+      "status": "backlog"
+    }
+  ],
+  "dependencies": [
+    { "predecessorTempId": "feat_current", "successorTempId": "feat_arch", "kind": "finish_start" },
+    { "predecessorTempId": "feat_arch", "successorTempId": "feat_cli", "kind": "finish_start" },
+    { "predecessorTempId": "feat_arch", "successorTempId": "feat_api", "kind": "finish_start" },
+    { "predecessorTempId": "feat_api", "successorTempId": "feat_fe", "kind": "finish_start" },
+    { "predecessorTempId": "feat_fe", "successorTempId": "feat_ui", "kind": "finish_start" },
+    { "predecessorTempId": "feat_ui", "successorTempId": "feat_qa", "kind": "finish_start" }
+  ]
+}

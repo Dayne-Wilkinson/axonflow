@@ -101,4 +101,31 @@ internal static class HandlersMeta
                 JsonOut.WriteText($"{r.Slug}\t{r.Name}\t{r.RefPrefix}");
         ctx.ExitCode = 0;
     }
+
+    public static void ProjectSetName(string slug, string name, InvocationContext ctx)
+    {
+        var dbPath = Path.GetFullPath(ctx.ParseResult.GetValueForOption(CliRoot.DbOption)!);
+        var json = ctx.ParseResult.GetValueForOption(CliRoot.JsonOption);
+        if (!File.Exists(dbPath))
+        {
+            if (json) JsonOut.WriteErr("not_found", "Database not found; run init first.");
+            else Console.Error.WriteLine("Database not found; run init first.");
+            ctx.ExitCode = 3;
+            return;
+        }
+
+        var store = new Store($"Data Source={dbPath};Mode=ReadWrite");
+        using var c = store.Open();
+        if (!store.UpdateProjectName(c, slug, name))
+        {
+            if (json) JsonOut.WriteErr("not_found", "No project with that slug.", new { slug });
+            else Console.Error.WriteLine("No project with that slug.");
+            ctx.ExitCode = 3;
+            return;
+        }
+
+        if (json) JsonOut.WriteOk(new { slug, name });
+        else JsonOut.WriteText($"Updated project {slug} display name to {name}");
+        ctx.ExitCode = 0;
+    }
 }

@@ -19,11 +19,10 @@ disable-model-invocation: true
 
 ## Paths
 
-- **Choosing `--db` when the user did not specify one:** resolve in this order (use the first path whose file exists):
-  1. **Repo / cwd local** — `.axonflow/axonflow.db` under the process current working directory (same default the CLI uses: `Paths.DefaultDbPath()`).
-  2. **User-level graph** — `~/.axonflow/axonflow.db` (Windows: `%USERPROFILE%\.axonflow\axonflow.db`). Typical when the backlog was created from a global `axonflow` install or any shell whose cwd is not the repo. `init` creates this tree if you point `--db` there.
+- **CLI default `--db`** is **`Paths.DefaultDbPath()`** → `~/.axonflow/axonflow.db` (Windows: `%USERPROFILE%\.axonflow\axonflow.db`), so a **global** `axonflow` works from any cwd.
+- **Repo-local graph** — use `--db .axonflow/axonflow.db` (or an absolute path under the repo) when you want a per-project database.
 - A **.NET global tool** install puts `axonflow` on `PATH` under `~/.dotnet/tools` (Windows: `%USERPROFILE%\.dotnet\tools`); the **database is not stored there**—only the executable.
-- **Prefer passing `--db` explicitly** (absolute path, or a path relative to the known repo root) whenever `cwd` might not be the workspace you mean.
+- **Prefer passing `--db` explicitly** (absolute path, or a path relative to the known repo root) whenever you mean a specific workspace file.
 
 ## Loop
 
@@ -42,6 +41,7 @@ disable-model-invocation: true
 dotnet run --project src/AxonFlow -- init --db .axonflow/axonflow.db
 dotnet run --project src/AxonFlow -- item add --db .axonflow/axonflow.db --type task --title "..." --json
 dotnet run --project src/AxonFlow -- item import --db .axonflow/axonflow.db --json --dry-run < plan.json
+dotnet run --project src/AxonFlow -- project set-name --db .axonflow/axonflow.db --slug default --name axonflow
 dotnet run --project src/AxonFlow -- item next --db .axonflow/axonflow.db --json
 dotnet run --project src/AxonFlow -- item start --db .axonflow/axonflow.db --ref AF-1 --assignee agent:composer --json
 dotnet run --project src/AxonFlow -- dep add --db .axonflow/axonflow.db --predecessor AF-1 --successor AF-2
@@ -50,6 +50,7 @@ dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db -
 dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --all-projects
 dotnet run --project src/AxonFlow -- dashboard open --db .axonflow/axonflow.db --out dashboard
 dotnet run --project src/AxonFlow -- dashboard watch --db .axonflow/axonflow.db --out dashboard --interval 120
+dotnet run --project src/AxonFlow -- dashboard serve --db .axonflow/axonflow.db --out dashboard --urls http://127.0.0.1:5057 --refresh-seconds 120
 # User-level DB (same file global workflows often use), if .axonflow under cwd does not exist:
 #   Windows:   --db %USERPROFILE%\.axonflow\axonflow.db
 #   macOS/Linux: --db ~/.axonflow/axonflow.db

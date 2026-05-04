@@ -73,6 +73,17 @@ public sealed class Store(string connectionString)
         return list;
     }
 
+    public bool UpdateProjectName(SqliteConnection c, string slug, string name, SqliteTransaction? tx = null)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "UPDATE projects SET name = @n, updated_at = @t WHERE slug = @s;";
+        cmd.Parameters.AddWithValue("@n", name);
+        cmd.Parameters.AddWithValue("@t", Now());
+        cmd.Parameters.AddWithValue("@s", slug);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
     public int GetNextRefNumber(SqliteConnection c, string projectId, SqliteTransaction? tx = null)
     {
         using var cmd = c.CreateCommand();

@@ -46,8 +46,23 @@ public static class CliRoot
         });
         var projectList = new Command("list", "List projects");
         projectList.SetHandler(HandlersMeta.ProjectList);
+
+        var projectSetName = new Command("set-name", "Change a project's display name (slug and work item refs unchanged)");
+        var setNameSlug = new Option<string>("--slug") { IsRequired = true };
+        var setNameDisplay = new Option<string>("--name") { IsRequired = true };
+        projectSetName.AddOption(setNameSlug);
+        projectSetName.AddOption(setNameDisplay);
+        projectSetName.SetHandler(ctx =>
+        {
+            HandlersMeta.ProjectSetName(
+                ctx.ParseResult.GetValueForOption(setNameSlug)!,
+                ctx.ParseResult.GetValueForOption(setNameDisplay)!,
+                ctx);
+        });
+
         project.AddCommand(projectAdd);
         project.AddCommand(projectList);
+        project.AddCommand(projectSetName);
         root.AddCommand(project);
 
         HandlersItem.Register(root);

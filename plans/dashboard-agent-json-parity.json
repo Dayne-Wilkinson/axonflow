@@ -1,0 +1,60 @@
+{
+  "items": [
+    {
+      "tempId": "feat_json",
+      "clientKey": "af-dash-feat-agent-json-parity",
+      "type": "feature",
+      "parentId": "820fbc4e99484ee69eae93841fd7e9e9",
+      "title": "Dashboard: show full item JSON (CLI/agent parity)",
+      "body": "Today the dashboard detail panel shows a short text summary (type, status, priority, body, blocked fields, predecessor refs). Agents use `axonflow item show --json` (and `--notes`) and receive the full ItemDto payload plus envelope: blockingPredecessors, blockedBy, optional recentNotes. Goal: the dashboard should surface the same structured fields so humans see exactly what is stored and what tooling sees—formatted JSON and/or structured sections, not only prose lines.",
+      "stream": "plan",
+      "priority": 28,
+      "status": "backlog",
+      "pathHints": ["src/AxonFlow/ItemJson.cs", "src/AxonFlow/HandlersItem.cs", "src/AxonFlow/HandlersDashboard.cs"]
+    },
+    {
+      "tempId": "t_env",
+      "clientKey": "af-dash-task-json-envelope-diff",
+      "type": "task",
+      "parentTempId": "feat_json",
+      "title": "Document gap: snapshot card data vs item show --json envelope",
+      "body": "Enumerate ItemJson.ItemDto fields (id, ref, type, stream, status, title, body, priority, parentId, blockedByWorkItemId, blockedReason, pathHints, snoozedUntil, discoveredFrom, clientKey, externalRef, assignedTo, sortOrder, completedAt, createdAt, updatedAt) and compare to item show --json top-level keys; map blockingPredecessors, blockedBy, recentNotes to dashboard data sources.",
+      "stream": "plan",
+      "priority": 55,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_ux_json",
+      "clientKey": "af-dash-task-json-detail-ux",
+      "type": "task",
+      "parentTempId": "feat_json",
+      "title": "UX: detail view for full payload (formatted JSON, copy, optional Notes tab)",
+      "body": "Specify formatted JSON (pretty-print, monospace), syntax-friendly styling, copy-to-clipboard; optional tab or section for recentNotes when parity with item show --notes matters.",
+      "stream": "plan",
+      "priority": 56,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_impl",
+      "clientKey": "af-dash-task-json-wire-dashboard",
+      "type": "task",
+      "parentTempId": "feat_json",
+      "title": "Wire dashboard selection to display full ItemDto-equivalent object",
+      "body": "On card select, render JSON object matching item show item (all scalar/nested fields including pathHints, clientKey, timestamps, discoveredFrom). Fold in predecessor/blocking context to mirror CLI envelope where data exists in snapshot or sibling queries.",
+      "stream": "plan",
+      "priority": 57,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_serve",
+      "clientKey": "af-dash-task-json-kestrel-route",
+      "type": "task",
+      "parentTempId": "feat_json",
+      "title": "Kestrel phase: GET item by ref returning item show --json-compatible body",
+      "body": "Optional lazy detail: HTTP route returns same shape as item show --json (item + blockingPredecessors + blockedBy + notes optional) for strict parity and smaller initial snapshot.",
+      "stream": "plan",
+      "priority": 58,
+      "status": "backlog"
+    }
+  ]
+}
