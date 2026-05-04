@@ -17,6 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="AxonFlow.Tests" />
     <EmbeddedResource Include="Migrations\001_initial.sql" />
   </ItemGroup>
 

@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Data.Sqlite;
@@ -188,6 +189,119 @@ internal static class HandlersDashboard
         return true;
     }
 
+    internal static JsonSerializerOptions CreateDashboardJsonSerializerOptions() => new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    internal static async Task WriteServeIndexHtmlAsync(
+        DirectoryInfo outDir,
+        int refreshSeconds,
+        string projectSlug,
+        bool allProjects,
+        JsonSerializerOptions jsonOpts,
+        CancellationToken cancellationToken = default)
+    {
+        var bootstrap = JsonSerializer.Serialize(new
+        {
+            __served = true,
+            pollSeconds = refreshSeconds,
+            defaultProject = projectSlug,
+            allProjects
+        }, jsonOpts);
+        outDir.Create();
+        var path = Path.Combine(outDir.FullName, "index.html");
+        var html = BuildHtml(bootstrap, refreshSeconds, allProjects ? "All projects" : projectSlug, allProjects ? "multi-project" : "live", allProjects, served: new DashboardServedConfig(refreshSeconds, projectSlug, allProjects));
+        await File.WriteAllTextAsync(path, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static WebApplication BuildServeWebApplication(
+        string dbPath,
+        DirectoryInfo outDir,
+        string urls,
+        string projectSlug,
+        bool allProjects,
+        JsonSerializerOptions jsonOpts)
+    {
+        var opts = new WebApplicationOptions
+        {
+            ContentRootPath = outDir.FullName,
+            WebRootPath = outDir.FullName,
+            ApplicationName = Assembly.GetEntryAssembly()?.GetName().Name ?? "axonflow"
+        };
+        var builder = WebApplication.CreateBuilder(opts);
+        builder.Logging.ClearProviders();
+        builder.Logging.AddSimpleConsole(o => o.SingleLine = true);
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
+        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+        builder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.Warning);
+        builder.WebHost.UseUrls(urls);
+
+        var app = builder.Build();
+        var log = app.Logger;
+        app.UseDefaultFiles(new DefaultFilesOptions
+        {
+            FileProvider = new PhysicalFileProvider(outDir.FullName)
+        });
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(outDir.FullName)
+        });
+
+        var slugClosure = projectSlug;
+        var allClosure = allProjects;
+        var jsonOptsClosure = jsonOpts;
+
+        app.MapGet("/api/snapshot", (string? project, bool? allProjectsQuery) =>
+        {
+            var all = allProjectsQuery ?? allClosure;
+            var proj = string.IsNullOrWhiteSpace(project) ? slugClosure : project!;
+            try
+            {
+                var store = new Store($"Data Source={dbPath};Mode=ReadOnly");
+                using var conn = store.Open();
+                var built = DashboardSnapshot.Build(store, conn, proj, all, jsonOptsClosure);
+                return Results.Text(built.Json, "application/json; charset=utf-8");
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "GET /api/snapshot failed (project={Project}, allProjects={AllProjects}).", proj, all);
+                return Results.Problem(
+                    title: "Snapshot error",
+                    detail: "An unexpected error occurred while building the dashboard snapshot.",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+        });
+
+        app.MapGet("/api/item", (string @ref, string? project, bool notes, int? notesLimit) =>
+        {
+            var lim = notesLimit is null or < 1 ? 20 : Math.Min(notesLimit.Value, 200);
+            var slug = string.IsNullOrWhiteSpace(project) ? slugClosure : project!;
+            try
+            {
+                var store = new Store($"Data Source={dbPath};Mode=ReadOnly");
+                using var conn = store.Open();
+                var pid = store.GetProjectId(conn, slug);
+                if (pid is null) return Results.NotFound();
+                var row = store.ResolveItem(conn, pid, @ref);
+                if (row is null) return Results.NotFound();
+                var env = ItemJson.BuildItemShowEnvelope(store, conn, pid, row, notes, lim);
+                return Results.Json(env, jsonOptsClosure);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "GET /api/item failed (ref={Ref}, project={Project}).", @ref, slug);
+                return Results.Problem(
+                    title: "Item error",
+                    detail: "An unexpected error occurred while loading the work item.",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+        });
+
+        return app;
+    }
+
     private static async Task RunServeAsync(DirectoryInfo outDir, string urls, int refreshSeconds, bool allProjects, bool openBrowser, InvocationContext ctx)
     {
         if (!IsLoopbackUrl(urls, out var urlErr))
@@ -220,23 +334,9 @@ internal static class HandlersDashboard
             }
         }
 
-        var jsonOpts = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
-        var bootstrap = JsonSerializer.Serialize(new
-        {
-            __served = true,
-            pollSeconds = refreshSeconds,
-            defaultProject = projectSlug,
-            allProjects
-        }, jsonOpts);
-
-        outDir.Create();
+        var jsonOpts = CreateDashboardJsonSerializerOptions();
+        await WriteServeIndexHtmlAsync(outDir, refreshSeconds, projectSlug, allProjects, jsonOpts).ConfigureAwait(false);
         var path = Path.Combine(outDir.FullName, "index.html");
-        var html = BuildHtml(bootstrap, refreshSeconds, allProjects ? "All projects" : projectSlug, allProjects ? "multi-project" : "live", allProjects, served: new DashboardServedConfig(refreshSeconds, projectSlug, allProjects));
-        await File.WriteAllTextAsync(path, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)).ConfigureAwait(false);
 
         if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption))
         {
@@ -245,68 +345,7 @@ internal static class HandlersDashboard
             return;
         }
 
-        var opts = new WebApplicationOptions
-        {
-            ContentRootPath = outDir.FullName,
-            WebRootPath = outDir.FullName,
-            ApplicationName = Assembly.GetEntryAssembly()?.GetName().Name ?? "axonflow"
-        };
-        var builder = WebApplication.CreateBuilder(opts);
-        builder.Logging.ClearProviders();
-        builder.Logging.SetMinimumLevel(LogLevel.Warning);
-        builder.WebHost.UseUrls(urls);
-
-        var app = builder.Build();
-        app.UseDefaultFiles(new DefaultFilesOptions
-        {
-            FileProvider = new PhysicalFileProvider(outDir.FullName)
-        });
-        app.UseStaticFiles(new StaticFileOptions
-        {
-            FileProvider = new PhysicalFileProvider(outDir.FullName)
-        });
-
-        var slugClosure = projectSlug;
-        var allClosure = allProjects;
-        var jsonOptsClosure = jsonOpts;
-
-        app.MapGet("/api/snapshot", (string? project, bool? allProjectsQuery) =>
-        {
-            var all = allProjectsQuery ?? allClosure;
-            var proj = string.IsNullOrWhiteSpace(project) ? slugClosure : project!;
-            try
-            {
-                var store = new Store($"Data Source={dbPath};Mode=ReadOnly");
-                using var conn = store.Open();
-                var built = DashboardSnapshot.Build(store, conn, proj, all, jsonOptsClosure);
-                return Results.Text(built.Json, "application/json; charset=utf-8");
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem(detail: ex.Message, statusCode: 500);
-            }
-        });
-
-        app.MapGet("/api/item", (string @ref, string? project, bool notes, int? notesLimit) =>
-        {
-            var lim = notesLimit is null or < 1 ? 20 : Math.Min(notesLimit.Value, 200);
-            var slug = string.IsNullOrWhiteSpace(project) ? slugClosure : project!;
-            try
-            {
-                var store = new Store($"Data Source={dbPath};Mode=ReadOnly");
-                using var conn = store.Open();
-                var pid = store.GetProjectId(conn, slug);
-                if (pid is null) return Results.NotFound();
-                var row = store.ResolveItem(conn, pid, @ref);
-                if (row is null) return Results.NotFound();
-                var env = ItemJson.BuildItemShowEnvelope(store, conn, pid, row, notes, lim);
-                return Results.Json(env, jsonOptsClosure);
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem(detail: ex.Message, statusCode: 500);
-            }
-        });
+        var app = BuildServeWebApplication(dbPath, outDir, urls, projectSlug, allProjects, jsonOpts);
 
         if (!ctx.ParseResult.GetValueForOption(CliRoot.QuietOption))
             JsonOut.WriteText($"Serving dashboard at {urls} (Ctrl+C to stop). GET /api/snapshot and /api/item");
@@ -435,14 +474,31 @@ __META_REFRESH__
     .badge.type-bug { border-left: 3px solid #f85149; }
     .badge.type-chore { border-left: 3px solid #8b949e; }
     .type-legend { font-size: 0.72rem; color: var(--muted); margin-top: 0.35rem; }
-    .detail {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-      padding: 1rem; max-width: 900px;
+    .detail-overlay {
+      position: fixed; inset: 0; z-index: 1000;
     }
-    .detail h3 { margin: 0 0 0.5rem; font-size: 1rem; }
-    .detail pre {
-      margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.78rem;
-      color: var(--muted);
+    .detail-overlay[hidden] { display: none !important; }
+    .detail-backdrop {
+      position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55);
+    }
+    .detail-dialog {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: min(960px, calc(100vw - 2rem)); max-height: min(85vh, 900px);
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 1rem 1rem 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    }
+    #detail-close {
+      position: absolute; top: 0.5rem; right: 0.5rem;
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; width: 2.25rem; height: 2.25rem; font-size: 1.25rem;
+      cursor: pointer; line-height: 1; padding: 0;
+    }
+    #detail-close:hover { border-color: #4a5f7a; }
+    #detail-popup-title { margin: 0; padding-right: 3rem; font-size: 1rem; }
+    #detail-popup-body {
+      margin: 0; overflow: auto; white-space: pre-wrap; word-break: break-word;
+      font-size: 0.78rem; color: var(--muted); flex: 1; min-height: 0;
     }
     footer {
       padding: 0.75rem 1.25rem; color: var(--muted); font-size: 0.75rem;
@@ -467,11 +523,15 @@ __META_REFRESH__
   </header>
   <main>
     <section class="board" id="board" aria-label="Work board"></section>
-    <section class="detail" id="detail" hidden>
-      <h3 id="detail-title"></h3>
-      <pre id="detail-body"></pre>
-    </section>
   </main>
+  <div id="detail-overlay" class="detail-overlay" hidden aria-hidden="true">
+    <div class="detail-backdrop" id="detail-backdrop"></div>
+    <div id="detail-dialog" class="detail-dialog" role="dialog" aria-modal="true" aria-labelledby="detail-popup-title" tabindex="-1">
+      <button type="button" id="detail-close" aria-label="Close details">×</button>
+      <h3 id="detail-popup-title"></h3>
+      <pre id="detail-popup-body"></pre>
+    </div>
+  </div>
   <footer>
 __FOOTER__
   </footer>
@@ -514,13 +574,47 @@ __FOOTER__
   const cols = ['backlog', 'ready', 'in_progress', 'blocked', 'done', 'cancelled'];
   const board = document.getElementById('board');
   const counts = document.getElementById('counts');
-  const detail = document.getElementById('detail');
-  const detailTitle = document.getElementById('detail-title');
-  const detailBody = document.getElementById('detail-body');
+  const detailOverlay = document.getElementById('detail-overlay');
+  const detailDialog = document.getElementById('detail-dialog');
+  const detailBackdrop = document.getElementById('detail-backdrop');
+  const detailClose = document.getElementById('detail-close');
+  const detailPopupTitle = document.getElementById('detail-popup-title');
+  const detailPopupBody = document.getElementById('detail-popup-body');
   const projectRow = document.getElementById('project-row');
   const projectSelect = document.getElementById('project-select');
 
   let currentSlug = null;
+  let lastFocusedCard = null;
+  let detailUiBound = false;
+
+  function closeDetailPopup() {
+    detailOverlay.hidden = true;
+    detailOverlay.setAttribute('aria-hidden', 'true');
+    if (lastFocusedCard && typeof lastFocusedCard.focus === 'function') {
+      try { lastFocusedCard.focus(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  function openDetailPopup() {
+    detailOverlay.hidden = false;
+    detailOverlay.setAttribute('aria-hidden', 'false');
+    try { detailClose.focus(); } catch (e) { /* ignore */ }
+  }
+
+  function bindDetailUiOnce() {
+    if (detailUiBound) return;
+    detailUiBound = true;
+    detailClose.addEventListener('click', function () { closeDetailPopup(); });
+    detailBackdrop.addEventListener('click', function () { closeDetailPopup(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !detailOverlay.hidden) {
+        e.preventDefault();
+        closeDetailPopup();
+      }
+    });
+  }
+  bindDetailUiOnce();
+
   function currentItemProject() {
     if (data && data.schemaVersion >= 2 && data.itemsByProjectSlug && data.projects) {
       return currentSlug || data.defaultProjectSlug || (data.projects[0] && data.projects[0].slug) || bootstrapData.defaultProject || 'default';
@@ -562,12 +656,12 @@ __FOOTER__
   }
 
   async function showDetail(it, depsList) {
-    if (!it) { detail.hidden = true; return; }
-    detail.hidden = false;
+    if (!it) { closeDetailPopup(); return; }
     const slugLine = it.projectSlug ? ('[' + it.projectSlug + '] ') : '';
-    detailTitle.textContent = slugLine + (it.type || '') + ' ' + it.ref + ' — ' + it.title;
+    detailPopupTitle.textContent = slugLine + (it.type || '') + ' ' + it.ref + ' — ' + it.title;
+    openDetailPopup();
     if (served && it.ref) {
-      detailBody.textContent = 'Loading…';
+      detailPopupBody.textContent = 'Loading…';
       try {
         const u = new URL('/api/item', location.origin);
         u.searchParams.set('ref', it.ref);
@@ -575,23 +669,27 @@ __FOOTER__
         const res = await fetch(u);
         if (res.ok) {
           const env = await res.json();
-          detailBody.textContent = JSON.stringify(env, null, 2);
+          detailPopupBody.textContent = JSON.stringify(env, null, 2);
           return;
         }
       } catch (e) { /* fall through */ }
     }
     const preds = (depsList || []).filter(function (d) { return d.successorRef === it.ref; });
-    detailBody.textContent = JSON.stringify({ item: it, predecessorDependencies: preds }, null, 2);
+    detailPopupBody.textContent = JSON.stringify({ item: it, predecessorDependencies: preds }, null, 2);
   }
 
   function wireBoardClicks(items, deps) {
     board.onclick = function (ev) {
       const card = ev.target.closest('.card');
-      if (!card) return;
+      if (!card) {
+        closeDetailPopup();
+        return;
+      }
       const id = card.getAttribute('data-id');
       const it = items.find(function (x) { return x.id === id; });
       document.querySelectorAll('.card.selected').forEach(function (x) { x.classList.remove('selected'); });
       card.classList.add('selected');
+      lastFocusedCard = card;
       void showDetail(it, deps);
     };
   }
@@ -704,7 +802,7 @@ __FOOTER__
     if (!multiSelectBound) {
       projectSelect.addEventListener('change', function () {
         currentSlug = projectSelect.value;
-        detail.hidden = true;
+        closeDetailPopup();
         updateHdr();
         renderBoard();
       });

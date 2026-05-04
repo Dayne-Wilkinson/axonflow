@@ -33,6 +33,8 @@ public class DashboardEmitTests
 
             var html = await File.ReadAllTextAsync(Path.Combine(outDir, "index.html"));
             Assert.Contains("id=\"af-snapshot\"", html);
+            Assert.Contains("id=\"detail-overlay\"", html);
+            Assert.Contains("id=\"detail-popup-body\"", html);
             var start = html.IndexOf("<script type=\"application/json\" id=\"af-snapshot\">", StringComparison.Ordinal);
             var end = html.IndexOf("</script>", start, StringComparison.Ordinal);
             Assert.True(start >= 0 && end > start);
