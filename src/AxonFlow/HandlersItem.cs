@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.CommandLine.Invocation;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
@@ -7,6 +8,19 @@ namespace AxonFlow;
 
 internal static class HandlersItem
 {
+    internal const int MaxItemBodyBytes = 512_000;
+
+    /// <summary>UTF-8 file body for item add/update; throws IOException on failure.</summary>
+    internal static string ReadBodyFileUtf8(string path)
+    {
+        var full = Path.GetFullPath(path);
+        if (!File.Exists(full)) throw new FileNotFoundException("Body file not found.", full);
+        var fi = new FileInfo(full);
+        if (fi.Length > MaxItemBodyBytes)
+            throw new InvalidOperationException($"Body file exceeds {MaxItemBodyBytes} bytes.");
+        return File.ReadAllText(full, Encoding.UTF8);
+    }
+
     public static void Register(RootCommand root)
     {
         var item = new Command("item", "Work items");
@@ -24,6 +38,8 @@ internal static class HandlersItem
         var snoozeOpt = new Option<string?>("--snoozed-until");
         var blockedByOpt = new Option<string?>("--blocked-by");
         var blockedReasonOpt = new Option<string?>("--blocked-reason");
+        var addBodyOpt = new Option<string?>("--body", "Item body (UTF-8); mutually exclusive with --body-file");
+        var addBodyFileOpt = new Option<FileInfo?>("--body-file", "Read body from UTF-8 file; mutually exclusive with --body");
         add.AddOption(typeOpt);
         add.AddOption(titleOpt);
         add.AddOption(statusOpt);
@@ -37,6 +53,8 @@ internal static class HandlersItem
         add.AddOption(snoozeOpt);
         add.AddOption(blockedByOpt);
         add.AddOption(blockedReasonOpt);
+        add.AddOption(addBodyOpt);
+        add.AddOption(addBodyFileOpt);
 
         add.SetHandler(ctx => ItemAdd(
             ctx.ParseResult.GetValueForOption(typeOpt)!,
@@ -52,6 +70,8 @@ internal static class HandlersItem
             ctx.ParseResult.GetValueForOption(snoozeOpt),
             ctx.ParseResult.GetValueForOption(blockedByOpt),
             ctx.ParseResult.GetValueForOption(blockedReasonOpt),
+            ctx.ParseResult.GetValueForOption(addBodyOpt),
+            ctx.ParseResult.GetValueForOption(addBodyFileOpt),
             ctx));
 
         var list = new Command("list", "List work items");
@@ -99,7 +119,8 @@ internal static class HandlersItem
             ctx));
 
         var update = new Command("update", "Update fields");
-        var uid = new Option<string>("--id") { IsRequired = true };
+        var uid = new Option<string?>("--id", "Work item id (exactly one of --id or --ref required)");
+        var uref = new Option<string?>("--ref", "Work item ref e.g. AF-12 (exactly one of --id or --ref required)");
         var utitle = new Option<string?>("--title");
         var ustatus = new Option<string?>("--status");
         var upri = new Option<int?>("--priority");
@@ -111,7 +132,11 @@ internal static class HandlersItem
         var uclearSnooze = new Option<bool>("--clear-snooze", () => false);
         var uph = new Option<string?>("--path-hints");
         var uasg = new Option<string?>("--assigned-to");
+        var ubody = new Option<string?>("--body", "Set body (UTF-8); mutually exclusive with --body-file and --clear-body");
+        var ubodyFile = new Option<FileInfo?>("--body-file", "Set body from UTF-8 file; mutually exclusive with --body and --clear-body");
+        var uclearBody = new Option<bool>("--clear-body", () => false, "Clear stored body (SQL NULL)");
         update.AddOption(uid);
+        update.AddOption(uref);
         update.AddOption(utitle);
         update.AddOption(ustatus);
         update.AddOption(upri);
@@ -123,8 +148,12 @@ internal static class HandlersItem
         update.AddOption(uclearSnooze);
         update.AddOption(uph);
         update.AddOption(uasg);
+        update.AddOption(ubody);
+        update.AddOption(ubodyFile);
+        update.AddOption(uclearBody);
         update.SetHandler(ctx => ItemUpdate(
-            ctx.ParseResult.GetValueForOption(uid)!,
+            ctx.ParseResult.GetValueForOption(uid),
+            ctx.ParseResult.GetValueForOption(uref),
             ctx.ParseResult.GetValueForOption(utitle),
             ctx.ParseResult.GetValueForOption(ustatus),
             ctx.ParseResult.GetValueForOption(upri),
@@ -136,6 +165,9 @@ internal static class HandlersItem
             ctx.ParseResult.GetValueForOption(uclearSnooze),
             ctx.ParseResult.GetValueForOption(uph),
             ctx.ParseResult.GetValueForOption(uasg),
+            ctx.ParseResult.GetValueForOption(ubody),
+            ctx.ParseResult.GetValueForOption(ubodyFile),
+            ctx.ParseResult.GetValueForOption(uclearBody),
             ctx));
 
         var note = new Command("note", "Append note");
@@ -294,7 +326,7 @@ internal static class HandlersItem
 
     public static void ItemAdd(string type, string title, string status, int priority, string? parent, string? clientKey,
         string? pathHints, string stream, string? discoveredFrom, bool noProvenance, string? snoozedUntil,
-        string? blockedBy, string? blockedReason, InvocationContext ctx)
+        string? blockedBy, string? blockedReason, string? bodyInline, FileInfo? bodyFile, InvocationContext ctx)
     {
         if (!OpenDb(ctx, out var store, out var c, out var pid) || pid is null) return;
         var json = ctx.ParseResult.GetValueForOption(CliRoot.JsonOption);
@@ -311,6 +343,39 @@ internal static class HandlersItem
         {
             if (json) JsonOut.WriteErr("validation", "blocked status requires --blocked-reason and/or --blocked-by");
             else Console.Error.WriteLine("blocked status requires --blocked-reason and/or --blocked-by");
+            ctx.ExitCode = 2;
+            return;
+        }
+
+        if (bodyInline is not null && bodyFile is not null)
+        {
+            if (json) JsonOut.WriteErr("validation", "use only one of --body or --body-file");
+            else Console.Error.WriteLine("use only one of --body or --body-file");
+            ctx.ExitCode = 2;
+            return;
+        }
+
+        string? bodyText = null;
+        try
+        {
+            if (bodyFile is not null)
+                bodyText = ReadBodyFileUtf8(bodyFile.FullName);
+            else if (bodyInline is not null)
+            {
+                if (Encoding.UTF8.GetByteCount(bodyInline) > MaxItemBodyBytes)
+                {
+                    if (json) JsonOut.WriteErr("validation", $"body exceeds {MaxItemBodyBytes} UTF-8 bytes");
+                    else Console.Error.WriteLine($"body exceeds {MaxItemBodyBytes} UTF-8 bytes");
+                    ctx.ExitCode = 2;
+                    return;
+                }
+                bodyText = bodyInline;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            if (json) JsonOut.WriteErr("validation", ex.Message);
+            else Console.Error.WriteLine(ex.Message);
             ctx.ExitCode = 2;
             return;
         }
@@ -366,7 +431,7 @@ internal static class HandlersItem
 
         using var tx = c.BeginTransaction();
         var ins = new Store.WorkItemInsert(pid, null, clientKey, pathJson, type, stream, discId, snoozedUntil, title,
-            null, status, priority, parentId, bbyId, blockedReason, null, null, 0);
+            bodyText, status, priority, parentId, bbyId, blockedReason, null, null, 0);
         var row = store.InsertItem(c, tx, ins);
         tx.Commit();
         if (json) JsonOut.WriteOk(ItemJson.ItemDto(store, c, row));
@@ -377,7 +442,18 @@ internal static class HandlersItem
     public static void ItemList(string? status, string? type, string? parent, string? stream, string? titleContains, string? refPrefix, string sort, int limit, InvocationContext ctx)
     {
         if (!OpenDb(ctx, out var store, out var c, out var pid) || pid is null) return;
-        var q = new Store.ItemListQuery(status, type, parent, stream, titleContains, refPrefix, sort, limit);
+        string? parentIdForQuery = parent;
+        if (!string.IsNullOrEmpty(parent))
+        {
+            var pRow = store.ResolveItem(c, pid, parent);
+            if (pRow is null)
+            {
+                Err(ctx, "not_found", "Parent not found");
+                return;
+            }
+            parentIdForQuery = pRow.Id;
+        }
+        var q = new Store.ItemListQuery(status, type, parentIdForQuery, stream, titleContains, refPrefix, sort, limit);
         var rows = store.ListItems(c, pid, q);
         var json = ctx.ParseResult.GetValueForOption(CliRoot.JsonOption);
         if (json) JsonOut.WriteOk(rows.Select(w => ItemJson.ItemDto(store, c, w)).ToList());
@@ -405,11 +481,21 @@ internal static class HandlersItem
         ctx.ExitCode = 0;
     }
 
-    public static void ItemUpdate(string id, string? title, string? status, int? priority, string? parent, string? blockedBy, string? blockedReason,
-        string? stream, string? snoozedUntil, bool clearSnooze, string? pathHints, string? assignedTo, InvocationContext ctx)
+    public static void ItemUpdate(string? id, string? @ref, string? title, string? status, int? priority, string? parent, string? blockedBy, string? blockedReason,
+        string? stream, string? snoozedUntil, bool clearSnooze, string? pathHints, string? assignedTo,
+        string? bodyInline, FileInfo? bodyFile, bool clearBody, InvocationContext ctx)
     {
         if (!OpenDb(ctx, out var store, out var c, out var pid) || pid is null) return;
-        var row = store.ResolveItem(c, pid, id);
+        var hasId = !string.IsNullOrEmpty(id);
+        var hasRef = !string.IsNullOrEmpty(@ref);
+        if (hasId == hasRef)
+        {
+            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", "exactly one of --id or --ref is required");
+            else Console.Error.WriteLine("exactly one of --id or --ref is required");
+            ctx.ExitCode = 2;
+            return;
+        }
+        var row = Resolve(store, c, pid, id, @ref);
         if (row is null) { Err(ctx, "not_found", "Item not found"); return; }
         if (status == "blocked" && string.IsNullOrEmpty(blockedReason) && string.IsNullOrEmpty(blockedBy))
         {
@@ -442,13 +528,46 @@ internal static class HandlersItem
             var parts = pathHints.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             ph = JsonSerializer.Serialize(parts);
         }
+        var bodySources = (bodyInline is not null ? 1 : 0) + (bodyFile is not null ? 1 : 0) + (clearBody ? 1 : 0);
+        if (bodySources > 1)
+        {
+            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", "use at most one of --body, --body-file, --clear-body");
+            else Console.Error.WriteLine("use at most one of --body, --body-file, --clear-body");
+            ctx.ExitCode = 2;
+            return;
+        }
+        string? bodyPatch = null;
+        try
+        {
+            if (clearBody) bodyPatch = "";
+            else if (bodyFile is not null) bodyPatch = ReadBodyFileUtf8(bodyFile.FullName);
+            else if (bodyInline is not null)
+            {
+                if (Encoding.UTF8.GetByteCount(bodyInline) > MaxItemBodyBytes)
+                {
+                    if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", $"body exceeds {MaxItemBodyBytes} UTF-8 bytes");
+                    else Console.Error.WriteLine($"body exceeds {MaxItemBodyBytes} UTF-8 bytes");
+                    ctx.ExitCode = 2;
+                    return;
+                }
+                bodyPatch = bodyInline;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", ex.Message);
+            else Console.Error.WriteLine(ex.Message);
+            ctx.ExitCode = 2;
+            return;
+        }
+
         if (ctx.ParseResult.GetValueForOption(CliRoot.DryRunOption))
         {
-            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteOk(new { plannedUpdate = id });
+            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteOk(new { plannedUpdate = row.Id });
             ctx.ExitCode = 0;
             return;
         }
-        store.PatchItem(c, null, row.Id, title, status, priority, parentId, bby, blockedReason, stream, snoozedUntil, clearSnooze, ph, assignedTo);
+        store.PatchItem(c, null, row.Id, title, status, priority, parentId, bby, blockedReason, stream, snoozedUntil, clearSnooze, ph, assignedTo, bodyPatch);
         var updated = store.GetItemById(c, row.Id)!;
         if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteOk(ItemJson.ItemDto(store, c, updated));
         ctx.ExitCode = 0;
@@ -471,9 +590,9 @@ internal static class HandlersItem
         var row = Resolve(store, c, pid, id, @ref);
         if (row is null) { Err(ctx, "not_found", "Item not found"); return; }
         if (clear)
-            store.PatchItem(c, null, row.Id, null, null, null, null, null, null, null, null, true, null, null);
+            store.PatchItem(c, null, row.Id, null, null, null, null, null, null, null, null, true, null, null, null);
         else if (!string.IsNullOrEmpty(until))
-            store.PatchItem(c, null, row.Id, null, null, null, null, null, null, null, until, false, null, null);
+            store.PatchItem(c, null, row.Id, null, null, null, null, null, null, null, until, false, null, null, null);
         else
         {
             if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", "use --until or --clear");
@@ -594,7 +713,7 @@ internal static class HandlersItem
             return;
         }
         if (ctx.ParseResult.GetValueForOption(CliRoot.DryRunOption)) { ctx.ExitCode = 0; return; }
-        store.PatchItem(c, null, row.Id, null, "in_progress", null, null, null, null, null, null, true, null, assignee);
+        store.PatchItem(c, null, row.Id, null, "in_progress", null, null, null, null, null, null, true, null, assignee, null);
         if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteOk(ItemJson.ItemDto(store, c, store.GetItemById(c, row.Id)!));
         ctx.ExitCode = 0;
     }

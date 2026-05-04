@@ -281,7 +281,7 @@ public sealed class Store(string connectionString)
 
     public void PatchItem(SqliteConnection c, SqliteTransaction? tx, string id,
         string? title, string? status, int? priority, string? parentId, string? blockedById, string? blockedReason,
-        string? stream, string? snoozedUntil, bool clearSnooze, string? pathHintsJson, string? assignedTo)
+        string? stream, string? snoozedUntil, bool clearSnooze, string? pathHintsJson, string? assignedTo, string? body)
     {
         var sets = new List<string> { "updated_at = @u" };
         using var cmd = c.CreateCommand();
@@ -331,6 +331,11 @@ public sealed class Store(string connectionString)
         {
             sets.Add("assigned_to = @asg");
             cmd.Parameters.AddWithValue("@asg", assignedTo.Length == 0 ? DBNull.Value : assignedTo);
+        }
+        if (body is not null)
+        {
+            sets.Add("body = @bod");
+            cmd.Parameters.AddWithValue("@bod", body.Length == 0 ? DBNull.Value : body);
         }
         cmd.CommandText = $"UPDATE work_items SET {string.Join(", ", sets)} WHERE id = @id;";
         cmd.ExecuteNonQuery();
