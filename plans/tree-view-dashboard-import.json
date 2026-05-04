@@ -1,0 +1,79 @@
+{
+  "items": [
+    {
+      "tempId": "sTree",
+      "clientKey": "af-dash-story-tree-view-replaces-mindmap",
+      "type": "story",
+      "parentId": "e239ac186b954367aee07f5fc24ed323",
+      "title": "Story: tree view dashboard page (replaces mind-map style page)",
+      "priority": 17,
+      "status": "backlog",
+      "stream": "plan",
+      "body": "**Objective:** Replace the current SVG-based mind map page with a **clearer read-only tree view** of the same work graph (parent/child first), while keeping the swim-lane board unchanged and preserving the existing snapshot contract (`af-snapshot` / `/api/snapshot`) and detail-popup parity (`showDetail` / `/api/item`).\n\n**Scope — in:** New static page (`tree.html` target name), board + tree navigation labels, client layout and styling for hierarchy, `HandlersDashboard` emit/serve/watch paths, tests under `tests/AxonFlow.Tests`, retargeting or cancelling open mind-map polish tasks that no longer apply. **Scope — out:** SQLite schema changes, editing from the tree, removing the board, changing snapshot JSON shape (additive optional fields only if strictly necessary and versioned).\n\n**Implementation details:** Prefer **semantic tree or nested list** layout (e.g. `role=\"tree\"` / `role=\"treeitem\"` with `aria-expanded`) or a compact **indented outline** with fixed columns (ref, type, status, title). Dependencies: per TV1 decision either omit from primary tree, show as **per-node badge/count**, or a **secondary panel**—avoid the current dense SVG chord graph as the main affordance. Reuse `pickBundle` / `currentSlug` rules from the board and prior AF-88 graph notes. File rename: **`mindmap.html` → `tree.html`**; consider a **one-line stub** `mindmap.html` that links or meta-refreshes to `tree.html` for existing bookmarks (optional child task).\n\n**Execution steps:** Complete child tasks in dependency order (TV1→TV5). Update user-facing strings: board link **\"Tree view\"** (or **\"Hierarchy\"** if shorter—finalize in TV1 note), tree page **\"Board\"** back to `index.html`, page `<title>` and `<h1>` must not say \"mind map\" after ship.\n\n**Validation plan:** `dotnet test`; `dashboard emit` and `dashboard serve` show `index.html` + `tree.html`; manual check v1 and v2 multi-project picker; keyboard spot-check Tab/Enter/Arrow if tree roles used; `validate --json` after backlog retarget.\n\n**Risks/blockers:** Very wide subtrees overflow horizontally—plan wrap or horizontal scroll; **dep cycles** still possible in data—tree must not infinite-loop; stale **AF-91–AF-94** titles may confuse agents until TV5 runs.\n\n**Handoff context:** Start **TV1** (`af-dash-task-tree-view-spec`); existing shipped code lives in `HandlersDashboard.cs` + `HandlersDashboard.Mindmap.cs` and tests `DashboardEmitTests` / `DashboardServeTests`."
+    },
+    {
+      "tempId": "tTv1",
+      "clientKey": "af-dash-task-tree-view-spec",
+      "type": "task",
+      "parentTempId": "sTree",
+      "title": "Specification: tree view IA, labels, file names, dependency display mode",
+      "priority": 31,
+      "status": "backlog",
+      "stream": "plan",
+      "body": "**Objective:** Decide and record the exact tree UX and naming so implementation does not thrash between \"mind map\" and \"tree\" terminology or between SVG and outline layouts.\n\n**Scope — in:** AxonFlow notes on feature **AF-85** (and this task): final **nav strings** (board→tree and tree→board), **filename** (`tree.html` vs keeping `mindmap.html`), optional **stub redirect** policy, how **dependencies** appear (omit / badge count / expandable details / second column). **Scope — out:** Writing production TS/C# in this task.\n\n**Implementation details:** Re-read AF-87/AF-88 notes; mark superseded lines where they assumed SVG mind map as primary. Choose **a11y pattern**: e.g. `role=\"tree\"` with roving tabindex vs simple nested lists with headings. Confirm **v2** still uses **only** `itemsByProjectSlug[currentSlug]` for rows.\n\n**Execution steps:** (1) `item note add` on AF-85 with the signed-off one-page spec summary. (2) List edge cases: empty project, single root many children, deep chain 10+, missing `parentId` target. (3) Link from this task to that note in a follow-up note.\n\n**Validation plan:** Peer-ready checklist in notes; no code required.\n\n**Risks/blockers:** Ambiguous dependency UX could block TV3—timebox decisions.\n\n**Handoff:** TV2 rename/nav uses exact strings from the AF-85 note."
+    },
+    {
+      "tempId": "tTv2",
+      "clientKey": "af-dash-task-tree-rename-nav-and-files",
+      "type": "task",
+      "parentTempId": "sTree",
+      "title": "Rename static page to tree.html and update board/tree navigation copy",
+      "priority": 32,
+      "status": "backlog",
+      "stream": "plan",
+      "pathHints": ["src/AxonFlow/HandlersDashboard.cs", "src/AxonFlow/HandlersDashboard.Mindmap.cs", "tests/AxonFlow.Tests/DashboardEmitTests.cs", "tests/AxonFlow.Tests/DashboardServeTests.cs"],
+      "body": "**Objective:** User-visible links and filenames match the **tree view** product (no \"Mind map\" label for the primary secondary page once shipped).\n\n**Scope — in:** `RunEmit`, `WriteServeIndexHtmlAsync`, `dashboard watch` user-facing log text, `BuildHtml` header nav (`href` target), mind map builder file/class rename if needed (`BuildMindmapHtml` → `BuildTreeViewHtml` or new partial), JSON `emit --json` field rename if present (`mindmapPath` → `treePath` or add alias), all tests asserting `mindmap.html`. **Scope — out:** Functional tree layout (TV3); optional `mindmap.html` stub can land here or in a tiny follow-up.\n\n**Implementation details:** Global search **mind map** / **mindmap** / **Mind map** in repo (including `.cursor/skills/axonflow/SKILL.md` if referenced). Emit writes **`tree.html`** alongside `index.html`. Serve static middleware serves `tree.html` automatically. Preserve **relative** URLs for `file://`.\n\n**Execution steps:** (1) Apply string and path renames per TV1 note. (2) Update tests to expect `tree.html` and new link text. (3) Bump **semver** if user ships after this chunk.\n\n**Validation plan:** `dotnet test`; grep for stale `mindmap.html` only where intentional stub.\n\n**Risks/blockers:** External docs or user bookmarks; document in AF-85 note and optional stub file.\n\n**Handoff:** TV3 implements tree DOM inside the renamed pipeline."
+    },
+    {
+      "tempId": "tTv3",
+      "clientKey": "af-dash-task-tree-view-layout-implementation",
+      "type": "task",
+      "parentTempId": "sTree",
+      "title": "Implement tree view layout (replace SVG mind map primary UX)",
+      "priority": 33,
+      "status": "backlog",
+      "stream": "plan",
+      "pathHints": ["src/AxonFlow/HandlersDashboard.Mindmap.cs"],
+      "body": "**Objective:** Deliver the **readable tree** agreed in TV1, using the same snapshot data as today, replacing the SVG node/chord layout as the default view.\n\n**Scope — in:** Client-side structure in the tree page script: build rows from items sorted by hierarchy (BFS/DFS from roots per AF-88), render expand/collapse if specified, integrate **showDetail** on row activate (click/Enter) and restore focus to row on close. **Scope — out:** New REST APIs; changing `DashboardSnapshot.Build` output.\n\n**Implementation details:** Prefer **DOM table or lists** over SVG for clarity. Reuse CSS variables from the board theme. Pan/zoom from mind map can be **removed** or reduced to **window scroll** only unless TV1 mandates minimal zoom. Keep **detail overlay** HTML/CSS aligned with `BuildHtml` to avoid drift (factor shared snippet only if low risk).\n\n**Execution steps:** (1) Remove or gut SVG-specific layout from current mind map page builder. (2) Implement tree rows + optional dependency treatment per TV1. (3) Manual large-project smoke.\n\n**Validation plan:** Manual v1/v2; `dotnet test` after TV4 updates assertions.\n\n**Risks/blockers:** Performance with hundreds of rows—may need lazy expand later.\n\n**Handoff:** TV4 locks automated checks."
+    },
+    {
+      "tempId": "tTv4",
+      "clientKey": "af-dash-task-tree-view-tests",
+      "type": "task",
+      "parentTempId": "sTree",
+      "title": "Tests: tree.html contract, links, and serve GET",
+      "priority": 34,
+      "status": "backlog",
+      "stream": "plan",
+      "pathHints": ["tests/AxonFlow.Tests/DashboardEmitTests.cs", "tests/AxonFlow.Tests/DashboardServeTests.cs"],
+      "body": "**Objective:** Prevent regressions on **emit**, **serve**, and cross-page **navigation** after the tree rename.\n\n**Scope — in:** Update existing dashboard tests from `mindmap.html` / `map-svg` markers to **tree** equivalents (`tree.html`, stable markers such as `role=\"tree\"` or a dedicated `id=\"tree-root\"` once implemented). Assert board page contains the **new** link `href` text per TV1. **Scope — out:** Playwright E2E.\n\n**Implementation details:** If TV2 introduced `treePath` in JSON ok payload, extend any CLI JSON snapshot tests. Keep **index.html** snapshot assertions unchanged aside from nav link.\n\n**Execution steps:** (1) Red-green on renamed files. (2) Add one assertion that old mind map SVG container is absent unless stub intentionally retains it.\n\n**Validation plan:** `dotnet test` green locally and in CI.\n\n**Risks/blockers:** Brittle tests tied to inner HTML—prefer `id` hooks agreed in TV3.\n\n**Handoff:** TV5 backlog hygiene."
+    },
+    {
+      "tempId": "tTv5",
+      "clientKey": "af-dash-task-tree-retarget-mindmap-followups",
+      "type": "task",
+      "parentTempId": "sTree",
+      "title": "Retarget or cancel open mind-map follow-up tasks (AF-91–AF-94) and refresh feature wording",
+      "priority": 35,
+      "status": "backlog",
+      "stream": "plan",
+      "body": "**Objective:** AxonFlow graph stays truthful: no orphaned **mind map** tasks promising SVG polish that the tree view supersedes.\n\n**Scope — in:** For each open child under story **AF-86** (or elsewhere) that referenced mind-map-only rendering (e.g. AF-91 layout, AF-92 pan/zoom, AF-93 popup parity if duplicated by tree work, AF-94 QA matrix): **update title/body** to tree vocabulary, **split** remaining work into new tasks, or **cancel** with `item note add` rationale. Optionally update **AF-85** feature title when the code ships (requires `item update`). **Scope — out:** Closing AF-85 before children done.\n\n**Implementation details:** Use `item list --parent AF-86 --json` (or appropriate parent) to enumerate rows. Prefer **cancel** with note when tree tasks fully subsume scope. Ensure `validate --json` has no false **unfinished_predecessor** noise after edits.\n\n**Execution steps:** (1) Inventory open tasks. (2) Patch each with `item update` or `item cancel` + note. (3) `validate --json`.\n\n**Validation plan:** Clean validate; human scan `item next` candidates.\n\n**Risks/blockers:** Accidentally cancelling still-needed QA—read bodies before cancel.\n\n**Handoff:** Close story **af-dash-story-tree-view-replaces-mindmap** when TV1–TV5 are **done** and product owner accepts tree UX."
+    }
+  ],
+  "dependencies": [
+    { "predecessorTempId": "tTv1", "successorTempId": "tTv2", "kind": "finish_start" },
+    { "predecessorTempId": "tTv2", "successorTempId": "tTv3", "kind": "finish_start" },
+    { "predecessorTempId": "tTv3", "successorTempId": "tTv4", "kind": "finish_start" },
+    { "predecessorTempId": "tTv4", "successorTempId": "tTv5", "kind": "finish_start" }
+  ]
+}

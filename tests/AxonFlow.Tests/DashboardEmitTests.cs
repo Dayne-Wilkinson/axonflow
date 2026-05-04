@@ -35,6 +35,13 @@ public class DashboardEmitTests
             Assert.Contains("id=\"af-snapshot\"", html);
             Assert.Contains("id=\"detail-overlay\"", html);
             Assert.Contains("id=\"detail-popup-body\"", html);
+            Assert.Contains("href=\"mindmap.html\"", html);
+
+            var mind = await File.ReadAllTextAsync(Path.Combine(outDir, "mindmap.html"));
+            Assert.Contains("id=\"af-snapshot\"", mind);
+            Assert.Contains("id=\"map-svg\"", mind);
+            Assert.Contains("href=\"index.html\"", mind);
+            Assert.Contains("id=\"detail-overlay\"", mind);
             var start = html.IndexOf("<script type=\"application/json\" id=\"af-snapshot\">", StringComparison.Ordinal);
             var end = html.IndexOf("</script>", start, StringComparison.Ordinal);
             Assert.True(start >= 0 && end > start);
@@ -88,6 +95,10 @@ public class DashboardEmitTests
             Assert.True(doc.RootElement.GetProperty("itemsByProjectSlug").TryGetProperty("default", out _));
             Assert.True(doc.RootElement.GetProperty("itemsByProjectSlug").TryGetProperty("second", out var sec));
             Assert.True(sec.GetProperty("items").GetArrayLength() >= 1);
+
+            Assert.True(File.Exists(Path.Combine(outDir, "mindmap.html")));
+            var mind = await File.ReadAllTextAsync(Path.Combine(outDir, "mindmap.html"));
+            Assert.Contains("\"schemaVersion\":2", mind);
         }
         finally
         {
