@@ -1,0 +1,71 @@
+{
+  "items": [
+    {
+      "tempId": "feat_types",
+      "clientKey": "af-dash-feat-type-visual",
+      "type": "feature",
+      "parentId": "820fbc4e99484ee69eae93841fd7e9e9",
+      "title": "Dashboard: distinguish work item types on the board",
+      "body": "Today the HTML dashboard shows stream (plan/emergent), assignee, and optional project badges on cards, but epic vs feature vs story vs task (and bug/chore if present) read similarly. Goal: at-a-glance differentiation (badges, icons, or rail colors) plus a compact legend; detail view should reinforce type. Applies to current embedded-snapshot UI and should carry forward to the fetch-based dashboard.",
+      "stream": "plan",
+      "priority": 27,
+      "status": "backlog",
+      "pathHints": ["src/AxonFlow/HandlersDashboard.cs"]
+    },
+    {
+      "tempId": "t_inv",
+      "clientKey": "af-dash-task-type-inventory",
+      "type": "task",
+      "parentTempId": "feat_types",
+      "title": "Inventory: snapshot item fields vs card/detail rendering for type",
+      "body": "Confirm ItemDto exposes type; list which types exist in schema; note where cardHtml omits type and detail panel shows it.",
+      "stream": "plan",
+      "priority": 50,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_ux",
+      "clientKey": "af-dash-task-type-ux-spec",
+      "type": "task",
+      "parentTempId": "feat_types",
+      "title": "UX spec: type chips, legend, and hierarchy cues (epic→task)",
+      "body": "Define per-type label, order, and treatment (badge shape, optional left stripe, icon-free or minimal icon set). Avoid relying on color alone; map to existing theme tokens where possible.",
+      "stream": "plan",
+      "priority": 51,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_board",
+      "clientKey": "af-dash-task-type-board-markup",
+      "type": "task",
+      "parentTempId": "feat_types",
+      "title": "Board cards: spec markup/CSS classes for each work item type",
+      "body": "Describe card changes (e.g. data-type + class type-epic) and how they interact with stream/status badges for implementation in BuildHtml/JS.",
+      "stream": "plan",
+      "priority": 52,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_detail",
+      "clientKey": "af-dash-task-type-detail",
+      "type": "task",
+      "parentTempId": "feat_types",
+      "title": "Detail panel: make type visually primary alongside ref/title",
+      "body": "Short spec for typography or badge in detail header so epic vs task is obvious when a card is selected.",
+      "stream": "plan",
+      "priority": 53,
+      "status": "backlog"
+    },
+    {
+      "tempId": "t_a11y",
+      "clientKey": "af-dash-task-type-a11y",
+      "type": "task",
+      "parentTempId": "feat_types",
+      "title": "Accessibility: type labels readable to SR and not color-only",
+      "body": "Checklist: aria text for type, contrast for new badges, keyboard focus unchanged.",
+      "stream": "plan",
+      "priority": 54,
+      "status": "backlog"
+    }
+  ]
+}
