@@ -47,4 +47,50 @@ public class DashboardEmitTests
             try { Directory.Delete(outDir, recursive: true); } catch { /* ignore */ }
         }
     }
+
+    [Fact]
+    public async Task Dashboard_emit_all_projects_writes_schema_v2_with_multiple_slugs()
+    {
+        var db = Path.Combine(Path.GetTempPath(), $"axonflow-dash2-{Guid.NewGuid():N}.db");
+        var outDir = Path.Combine(Path.GetTempPath(), $"axonflow-out2-{Guid.NewGuid():N}");
+        try
+        {
+            var parser = CreateParser();
+            Assert.Equal(0, await parser.InvokeAsync(new[] { "init", "--db", db }));
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "project", "add", "--db", db, "--name", "Second", "--slug", "second", "--ref-prefix", "OX"
+            }));
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "item", "add", "--db", db, "--project", "default", "--type", "task", "--title", "A", "--status", "ready", "--json"
+            }));
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "item", "add", "--db", db, "--project", "second", "--type", "task", "--title", "B", "--status", "ready", "--json"
+            }));
+
+            Directory.CreateDirectory(outDir);
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "dashboard", "emit", "--db", db, "--out", outDir, "--all-projects", "--quiet"
+            }));
+
+            var html = await File.ReadAllTextAsync(Path.Combine(outDir, "index.html"));
+            var start = html.IndexOf("<script type=\"application/json\" id=\"af-snapshot\">", StringComparison.Ordinal);
+            var end = html.IndexOf("</script>", start, StringComparison.Ordinal);
+            var json = html[(start + "<script type=\"application/json\" id=\"af-snapshot\">".Length)..end].Trim();
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            Assert.Equal(2, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+            Assert.True(doc.RootElement.GetProperty("projects").GetArrayLength() >= 2);
+            Assert.True(doc.RootElement.GetProperty("itemsByProjectSlug").TryGetProperty("default", out _));
+            Assert.True(doc.RootElement.GetProperty("itemsByProjectSlug").TryGetProperty("second", out var sec));
+            Assert.True(sec.GetProperty("items").GetArrayLength() >= 1);
+        }
+        finally
+        {
+            try { File.Delete(db); } catch { /* ignore */ }
+            try { Directory.Delete(outDir, recursive: true); } catch { /* ignore */ }
+        }
+    }
 }
