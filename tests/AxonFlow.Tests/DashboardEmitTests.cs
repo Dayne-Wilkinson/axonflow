@@ -35,13 +35,19 @@ public class DashboardEmitTests
             Assert.Contains("id=\"af-snapshot\"", html);
             Assert.Contains("id=\"detail-overlay\"", html);
             Assert.Contains("id=\"detail-popup-body\"", html);
-            Assert.Contains("href=\"mindmap.html\"", html);
+            Assert.Contains("href=\"tree.html\"", html);
+            Assert.Contains("Tree view</a>", html);
 
-            var mind = await File.ReadAllTextAsync(Path.Combine(outDir, "mindmap.html"));
-            Assert.Contains("id=\"af-snapshot\"", mind);
-            Assert.Contains("id=\"map-svg\"", mind);
-            Assert.Contains("href=\"index.html\"", mind);
-            Assert.Contains("id=\"detail-overlay\"", mind);
+            var tree = await File.ReadAllTextAsync(Path.Combine(outDir, "tree.html"));
+            Assert.Contains("id=\"af-snapshot\"", tree);
+            Assert.Contains("id=\"tree-body\"", tree);
+            Assert.Contains("role=\"tree\"", tree);
+            Assert.Contains("href=\"index.html\"", tree);
+            Assert.Contains("id=\"detail-overlay\"", tree);
+
+            var stub = await File.ReadAllTextAsync(Path.Combine(outDir, "mindmap.html"));
+            Assert.Contains("tree.html", stub);
+            Assert.DoesNotContain("id=\"map-svg\"", stub);
             var start = html.IndexOf("<script type=\"application/json\" id=\"af-snapshot\">", StringComparison.Ordinal);
             var end = html.IndexOf("</script>", start, StringComparison.Ordinal);
             Assert.True(start >= 0 && end > start);
@@ -96,9 +102,10 @@ public class DashboardEmitTests
             Assert.True(doc.RootElement.GetProperty("itemsByProjectSlug").TryGetProperty("second", out var sec));
             Assert.True(sec.GetProperty("items").GetArrayLength() >= 1);
 
+            Assert.True(File.Exists(Path.Combine(outDir, "tree.html")));
+            var tree = await File.ReadAllTextAsync(Path.Combine(outDir, "tree.html"));
+            Assert.Contains("\"schemaVersion\":2", tree);
             Assert.True(File.Exists(Path.Combine(outDir, "mindmap.html")));
-            var mind = await File.ReadAllTextAsync(Path.Combine(outDir, "mindmap.html"));
-            Assert.Contains("\"schemaVersion\":2", mind);
         }
         finally
         {

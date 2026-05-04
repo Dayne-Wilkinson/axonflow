@@ -5,8 +5,8 @@ namespace AxonFlow;
 
 internal static partial class HandlersDashboard
 {
-    /// <summary>Static mind map page: same snapshot bootstrap as the board, hierarchical layout + dependency overlay, pan/zoom, detail popup parity.</summary>
-    private static string BuildMindmapHtml(string snapshotJson, int refreshSeconds, string pageTitle, string refScopeHint, bool multiProject, DashboardServedConfig? served)
+    /// <summary>Read-only hierarchy table: same snapshot bootstrap as the board, detail popup parity, v1 + v2 bundle.</summary>
+    private static string BuildTreeViewHtml(string snapshotJson, int refreshSeconds, string pageTitle, string refScopeHint, bool multiProject, DashboardServedConfig? served)
     {
         var esc = snapshotJson.Replace("</script>", "<\\/script>", StringComparison.Ordinal);
         var titleEnc = WebUtility.HtmlEncode(pageTitle);
@@ -14,10 +14,10 @@ internal static partial class HandlersDashboard
             ? $"""  <meta http-equiv="refresh" content="{refreshSeconds}"/>"""
             : "";
         var footerBody = served is not null
-            ? $"<p>Live mind map from <code>/api/snapshot</code> (poll every <strong>{served.Value.PollSeconds}</strong>s). Board: <a href=\"index.html\">index.html</a>. Offline: <code>axonflow dashboard emit …</code>.</p>"
+            ? $"<p>Live tree from <code>/api/snapshot</code> (poll every <strong>{served.Value.PollSeconds}</strong>s). Board: <a href=\"index.html\">index.html</a>. Offline: <code>axonflow dashboard emit …</code>.</p>"
             : (multiProject
-                ? $"<p>Mind map (multi-project). Use the project picker. Page reloads every <strong>{refreshSeconds}</strong>s. Board: <a href=\"index.html\">index.html</a>.</p>"
-                : $"<p>Mind map · {WebUtility.HtmlEncode(refScopeHint)}. Reload every <strong>{refreshSeconds}</strong>s. Board: <a href=\"index.html\">index.html</a>.</p>");
+                ? $"<p>Tree view (multi-project). Use the project picker. Page reloads every <strong>{refreshSeconds}</strong>s. Board: <a href=\"index.html\">index.html</a>.</p>"
+                : $"<p>Tree view · {WebUtility.HtmlEncode(refScopeHint)}. Reload every <strong>{refreshSeconds}</strong>s. Board: <a href=\"index.html\">index.html</a>.</p>");
 
         var head = """
 <!DOCTYPE html>
@@ -26,7 +26,7 @@ internal static partial class HandlersDashboard
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
 __META_REFRESH__
-  <title>AxonFlow — __TITLE__ · mind map</title>
+  <title>AxonFlow — __TITLE__ · tree view</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -40,10 +40,7 @@ __META_REFRESH__
       --blocked: #f85149;
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0; font-family: ui-sans-serif, system-ui, sans-serif;
-      background: var(--bg); color: var(--text); min-height: 100vh;
-    }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
     header {
       padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
       display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: baseline;
@@ -66,29 +63,23 @@ __META_REFRESH__
     .counts { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; }
     .counts span { color: var(--muted); }
     .counts strong { color: var(--text); }
-    main { padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-    #map-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-    #map-toolbar button {
-      padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid var(--border);
-      background: var(--bg); color: var(--text); cursor: pointer; font-size: 0.8rem;
-    }
-    #map-toolbar button:hover { border-color: #4a5f7a; }
-    #map-viewport {
-      position: relative; overflow: hidden; height: min(72vh, 720px);
+    main { padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+    #tree-scroll {
+      overflow: auto; max-height: min(78vh, 820px);
       border: 1px solid var(--border); border-radius: 8px; background: #0b0e12;
-      touch-action: none;
     }
-    #map-pan-layer { transform-origin: 0 0; will-change: transform; }
-    #map-svg { display: block; cursor: grab; min-width: 400px; min-height: 280px; }
-    #map-svg:active { cursor: grabbing; }
-    .mm-node { cursor: pointer; }
-    .mm-node rect { fill: var(--panel); stroke: var(--border); rx: 6; }
-    .mm-node:focus { outline: none; }
-    .mm-node:focus rect { stroke: var(--plan); stroke-width: 2; }
-    .mm-node text { fill: var(--text); font-size: 11px; pointer-events: none; }
-    .mm-node .mm-ref { fill: var(--plan); font-weight: 600; font-size: 10px; }
-    .mm-edge-tree { stroke: #5a6d85; stroke-width: 1.5; fill: none; }
-    .mm-edge-dep { stroke: #79c0ff; stroke-width: 1.2; stroke-dasharray: 5 4; fill: none; opacity: 0.9; }
+    #tree-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    #tree-table th {
+      text-align: left; padding: 0.55rem 0.65rem; background: var(--panel);
+      border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 600; position: sticky; top: 0; z-index: 1;
+    }
+    #tree-table td { padding: 0.45rem 0.65rem; border-bottom: 1px solid #2d3a4d; vertical-align: top; }
+    tr.tree-row { cursor: pointer; }
+    tr.tree-row:hover { background: #161b22; }
+    tr.tree-row:focus { outline: 2px solid var(--plan); outline-offset: -2px; }
+    tr.tree-row.selected { background: #1c2430; }
+    td.refcell { font-weight: 600; color: var(--plan); white-space: nowrap; }
+    td.dep { color: var(--muted); font-size: 0.76rem; white-space: nowrap; }
     .type-legend { font-size: 0.72rem; color: var(--muted); margin-top: 0.35rem; }
     .detail-overlay { position: fixed; inset: 0; z-index: 1000; }
     .detail-overlay[hidden] { display: none !important; }
@@ -114,16 +105,16 @@ __META_REFRESH__
     }
     footer { padding: 0.75rem 1.25rem; color: var(--muted); font-size: 0.75rem; border-top: 1px solid var(--border); }
     footer a { color: var(--plan); }
-    #map-empty { padding: 2rem; color: var(--muted); text-align: center; display: none; }
+    #tree-empty { padding: 2rem; color: var(--muted); text-align: center; display: none; }
   </style>
 </head>
 <body>
   <header>
     <div>
-      <h1>Mind map</h1>
+      <h1>Tree view</h1>
       <nav class="nav-links" aria-label="Page navigation"><a href="index.html">Board</a></nav>
       <div class="meta" id="hdr-meta"></div>
-      <div class="type-legend" id="type-legend" hidden>Types use labels on nodes (color is secondary).</div>
+      <div class="type-legend" id="type-legend" hidden>Columns show ref, type, status, title; dependency count is secondary.</div>
       <div class="project-row" id="project-row">
         <label for="project-select">Project</label>
         <select id="project-select" aria-label="Select project"></select>
@@ -132,17 +123,14 @@ __META_REFRESH__
     <div class="counts" id="counts"></div>
   </header>
   <main>
-    <p id="map-empty">No items in this project snapshot.</p>
-    <div id="map-toolbar">
-      <span style="color:var(--muted);font-size:0.8rem">Zoom: Ctrl + wheel on map</span>
-      <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
-      <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
-      <button type="button" id="zoom-reset" aria-label="Reset pan and zoom">Reset view</button>
-    </div>
-    <div id="map-viewport" aria-label="Mind map canvas">
-      <div id="map-pan-layer">
-        <svg id="map-svg" xmlns="http://www.w3.org/2000/svg" width="1200" height="800"></svg>
-      </div>
+    <p id="tree-empty">No items in this project snapshot.</p>
+    <div id="tree-scroll" aria-label="Work item tree">
+      <table id="tree-table" class="tree-table" role="tree" aria-label="Work items by parent hierarchy" hidden>
+        <thead>
+          <tr><th scope="col">Ref</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Title</th><th scope="col">Deps</th></tr>
+        </thead>
+        <tbody id="tree-body"></tbody>
+      </table>
     </div>
   </main>
   <div id="detail-overlay" class="detail-overlay" hidden aria-hidden="true">
@@ -177,7 +165,6 @@ __FOOTER__
 
   const served = !!(bootstrapData && bootstrapData.__served);
   let data;
-
   async function loadSnapshotFromApi() {
     const u = new URL('/api/snapshot', location.origin);
     if (bootstrapData.allProjects) u.searchParams.set('allProjects', '1');
@@ -186,36 +173,30 @@ __FOOTER__
     if (!res.ok) throw new Error('snapshot HTTP ' + res.status);
     return res.json();
   }
-
   if (served) typeLegend.hidden = false;
 
   const counts = document.getElementById('counts');
   const projectRow = document.getElementById('project-row');
   const projectSelect = document.getElementById('project-select');
-  const svg = document.getElementById('map-svg');
-  const panLayer = document.getElementById('map-pan-layer');
-  const viewport = document.getElementById('map-viewport');
-  const mapEmpty = document.getElementById('map-empty');
   const detailOverlay = document.getElementById('detail-overlay');
-  const detailDialog = document.getElementById('detail-dialog');
-  const detailBackdrop = document.getElementById('detail-backdrop');
   const detailClose = document.getElementById('detail-close');
+  const detailBackdrop = document.getElementById('detail-backdrop');
   const detailPopupTitle = document.getElementById('detail-popup-title');
   const detailPopupBody = document.getElementById('detail-popup-body');
+  const treeBody = document.getElementById('tree-body');
+  const treeTable = document.getElementById('tree-table');
+  const treeEmpty = document.getElementById('tree-empty');
 
   let currentSlug = null;
-  let lastFocusedNode = null;
+  let lastFocusedRow = null;
   let detailUiBound = false;
   let multiSelectBound = false;
-
-  let panX = 0, panY = 0, scale = 1;
-  const nodeW = 200, nodeH = 52, colGap = 260, rowGap = 72;
 
   function closeDetailPopup() {
     detailOverlay.hidden = true;
     detailOverlay.setAttribute('aria-hidden', 'true');
-    if (lastFocusedNode && typeof lastFocusedNode.focus === 'function') {
-      try { lastFocusedNode.focus(); } catch (e) { /* ignore */ }
+    if (lastFocusedRow && typeof lastFocusedRow.focus === 'function') {
+      try { lastFocusedRow.focus(); } catch (e) { /* ignore */ }
     }
   }
   function openDetailPopup() {
@@ -288,74 +269,58 @@ __FOOTER__
       if (!it || !it.id) continue;
       if (!incoming.has(it.id)) roots.push(it.id);
     }
-    if (!roots.length && items.length) {
-      for (const it of items) {
-        if (it && it.id) roots.push(it.id);
-      }
+    if (!roots.length && nodes.size) {
+      for (const id of nodes.keys()) roots.push(id);
+      roots.sort(function (a, b) {
+        return ((nodes.get(a) || {}).ref || '').localeCompare((nodes.get(b) || {}).ref || '');
+      });
     }
     return { nodes, parentEdges, depEdges, roots };
   }
 
-  function layoutPositions(graph) {
-    const { nodes, parentEdges, roots } = graph;
+  function countDepsFor(id, depEdges) {
+    var n = 0;
+    for (var i = 0; i < depEdges.length; i++) {
+      var e = depEdges[i];
+      if (e.fromId === id || e.toId === id) n++;
+    }
+    return n;
+  }
+
+  function dfsRows(graph) {
+    const nodes = graph.nodes;
+    const parentEdges = graph.parentEdges;
+    const depEdges = graph.depEdges;
     const children = new Map();
     for (const e of parentEdges) {
       if (!children.has(e.parentId)) children.set(e.parentId, []);
       children.get(e.parentId).push(e.childId);
     }
-    for (const [, arr] of children) {
+    children.forEach(function (arr) {
       arr.sort(function (a, b) {
         const ra = (nodes.get(a) || {}).ref || '';
         const rb = (nodes.get(b) || {}).ref || '';
         return ra.localeCompare(rb);
       });
+    });
+    const rows = [];
+    const visited = new Set();
+    function visit(id, depth) {
+      if (visited.has(id)) return;
+      visited.add(id);
+      const it = nodes.get(id);
+      if (!it) return;
+      rows.push({ it: it, depth: depth, depN: countDepsFor(id, depEdges) });
+      const ch = children.get(id) || [];
+      for (let i = 0; i < ch.length; i++) visit(ch[i], depth + 1);
     }
-    const depth = new Map();
-    const q = roots.slice().sort(function (a, b) {
+    const rts = graph.roots.slice().sort(function (a, b) {
       const ra = (nodes.get(a) || {}).ref || '';
       const rb = (nodes.get(b) || {}).ref || '';
       return ra.localeCompare(rb);
     });
-    for (const id of q) depth.set(id, 0);
-    for (let qi = 0; qi < q.length; qi++) {
-      const id = q[qi];
-      const d0 = depth.get(id) || 0;
-      const ch = children.get(id) || [];
-      for (const c of ch) {
-        depth.set(c, Math.max(depth.get(c) || 0, d0 + 1));
-        q.push(c);
-      }
-    }
-    for (const id of nodes.keys()) {
-      if (!depth.has(id)) depth.set(id, 0);
-    }
-    const byDepth = new Map();
-    depth.forEach(function (d, id) {
-      if (!byDepth.has(d)) byDepth.set(d, []);
-      byDepth.get(d).push(id);
-    });
-    for (const [, arr] of byDepth) {
-      arr.sort(function (a, b) {
-        const ra = (nodes.get(a) || {}).ref || '';
-        const rb = (nodes.get(b) || {}).ref || '';
-        return ra.localeCompare(rb);
-      });
-    }
-    const pos = new Map();
-    let maxY = 0, maxX = 0;
-    const dList = Array.from(byDepth.keys()).sort(function (a, b) { return a - b; });
-    for (const d of dList) {
-      const row = byDepth.get(d) || [];
-      const x = 40 + d * colGap;
-      let y = 40;
-      for (const id of row) {
-        pos.set(id, { x: x, y: y, w: nodeW, h: nodeH });
-        maxX = Math.max(maxX, x + nodeW + 40);
-        maxY = Math.max(maxY, y + nodeH + 40);
-        y += rowGap;
-      }
-    }
-    return { pos, size: { w: Math.max(600, maxX), h: Math.max(400, maxY) } };
+    for (let i = 0; i < rts.length; i++) visit(rts[i], 0);
+    return rows;
   }
 
   async function showDetail(it, depsList) {
@@ -381,117 +346,56 @@ __FOOTER__
     detailPopupBody.textContent = JSON.stringify({ item: it, predecessorDependencies: preds }, null, 2);
   }
 
-  function applyPanZoom() {
-    panLayer.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + scale + ')';
-  }
-
-  function renderMap() {
-    const { items, deps } = pickBundle();
+  function renderTree() {
+    const bundle = pickBundle();
+    const items = bundle.items;
+    const deps = bundle.deps;
     const graph = buildGraph(items, deps);
-    const { pos, size } = layoutPositions(graph);
-    svg.setAttribute('width', String(size.w));
-    svg.setAttribute('height', String(size.h));
-    svg.innerHTML = '';
-
+    const rows = dfsRows(graph);
     const open = items.filter(function (i) { return i.status !== 'done' && i.status !== 'cancelled'; }).length;
-    counts.innerHTML = '<span>Nodes <strong>' + items.length + '</strong></span><span>Open <strong>' + open + '</strong></span>';
+    counts.innerHTML = '<span>Rows <strong>' + rows.length + '</strong></span><span>Open <strong>' + open + '</strong></span>';
 
     if (!items.length) {
-      mapEmpty.style.display = 'block';
-      document.getElementById('map-toolbar').style.display = 'none';
-      viewport.style.display = 'none';
+      treeEmpty.style.display = 'block';
+      treeTable.hidden = true;
       return;
     }
-    mapEmpty.style.display = 'none';
-    document.getElementById('map-toolbar').style.display = 'flex';
-    viewport.style.display = 'block';
-
-    const gEdges = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    gEdges.setAttribute('class', 'mm-edges');
-    svg.appendChild(gEdges);
-
-    for (const e of graph.parentEdges) {
-      const pa = pos.get(e.parentId);
-      const ca = pos.get(e.childId);
-      if (!pa || !ca) continue;
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', String(pa.x + pa.w));
-      line.setAttribute('y1', String(pa.y + pa.h / 2));
-      line.setAttribute('x2', String(ca.x));
-      line.setAttribute('y2', String(ca.y + ca.h / 2));
-      line.setAttribute('class', 'mm-edge-tree');
-      gEdges.appendChild(line);
-    }
-
-    for (const e of graph.depEdges) {
-      const a = pos.get(e.fromId);
-      const b = pos.get(e.toId);
-      if (!a || !b) continue;
-      const ax = a.x + a.w, ay = a.y + a.h / 2, bx = b.x, by = b.y + b.h / 2;
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      const mx = (ax + bx) / 2;
-      const d = 'M ' + ax + ' ' + ay + ' C ' + mx + ' ' + ay + ', ' + mx + ' ' + by + ', ' + bx + ' ' + by;
-      path.setAttribute('d', d);
-      path.setAttribute('class', 'mm-edge-dep');
-      gEdges.appendChild(path);
-    }
-
-    const gNodes = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    gNodes.setAttribute('class', 'mm-nodes');
-    svg.appendChild(gNodes);
-
-    for (const it of items) {
-      const p = pos.get(it.id);
-      if (!p) continue;
-      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('class', 'mm-node');
-      g.setAttribute('transform', 'translate(' + p.x + ',' + p.y + ')');
-      g.setAttribute('data-id', it.id);
-      g.setAttribute('data-ref', it.ref || '');
-      g.setAttribute('tabindex', '0');
-      g.setAttribute('role', 'button');
-      const st = (it.status || '').replace('_', ' ');
-      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      r.setAttribute('width', String(nodeW));
-      r.setAttribute('height', String(nodeH));
-      const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t1.setAttribute('x', '8');
-      t1.setAttribute('y', '16');
-      t1.setAttribute('class', 'mm-ref');
-      t1.textContent = (it.ref || '') + ' · ' + (it.type || '');
-      const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t2.setAttribute('x', '8');
-      t2.setAttribute('y', '34');
-      const title = (it.title || '').length > 34 ? (it.title || '').slice(0, 32) + '…' : (it.title || '');
-      t2.textContent = title;
-      const t3 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t3.setAttribute('x', '8');
-      t3.setAttribute('y', '48');
-      t3.setAttribute('fill', 'var(--muted)');
-      t3.setAttribute('font-size', '10');
-      t3.textContent = st;
-      g.appendChild(r);
-      g.appendChild(t1);
-      g.appendChild(t2);
-      g.appendChild(t3);
-      g.addEventListener('click', function (ev) {
+    treeEmpty.style.display = 'none';
+    treeTable.hidden = false;
+    treeBody.innerHTML = '';
+    for (const row of rows) {
+      const it = row.it;
+      const tr = document.createElement('tr');
+      tr.className = 'tree-row';
+      tr.setAttribute('role', 'treeitem');
+      tr.setAttribute('aria-level', String(row.depth + 1));
+      tr.tabIndex = 0;
+      tr.setAttribute('data-id', it.id);
+      tr.setAttribute('data-ref', it.ref || '');
+      const pad = (row.depth * 18) + 'px';
+      const depLabel = row.depN ? (String(row.depN) + ' link' + (row.depN === 1 ? '' : 's')) : '';
+      const title = (it.title || '').length > 120 ? (it.title || '').slice(0, 118) + '…' : (it.title || '');
+      tr.innerHTML =
+        '<td class="refcell" style="padding-left:calc(0.65rem + ' + pad + ')">' + esc(it.ref) + '</td>' +
+        '<td>' + esc((it.type || '').toLowerCase()) + '</td>' +
+        '<td>' + esc((it.status || '').replace('_', ' ')) + '</td>' +
+        '<td>' + esc(title) + '</td>' +
+        '<td class="dep">' + esc(depLabel) + '</td>';
+      tr.addEventListener('click', function (ev) {
         ev.stopPropagation();
-        document.querySelectorAll('.mm-node').forEach(function (n) { n.classList.remove('selected'); });
-        g.classList.add('selected');
-        lastFocusedNode = g;
+        document.querySelectorAll('tr.tree-row').forEach(function (x) { x.classList.remove('selected'); });
+        tr.classList.add('selected');
+        lastFocusedRow = tr;
         void showDetail(it, deps);
       });
-      g.addEventListener('keydown', function (ev) {
+      tr.addEventListener('keydown', function (ev) {
         if (ev.key === 'Enter' || ev.key === ' ') {
           ev.preventDefault();
-          g.click();
+          tr.click();
         }
       });
-      gNodes.appendChild(g);
+      treeBody.appendChild(tr);
     }
-
-    panX = 20; panY = 20; scale = 1;
-    applyPanZoom();
   }
 
   function updateHdrMulti() {
@@ -501,7 +405,6 @@ __FOOTER__
     document.getElementById('hdr-meta').textContent =
       'Project: ' + projLabel + ' · Generated: ' + (data.generatedAt || '') + ' · ' + rp + '-*';
   }
-
   function updateHdrLegacy() {
     const pfx = (data.project && data.project.refPrefix) || 'AF';
     const projLabel = (data.project && (data.project.name || data.project.slug)) || '';
@@ -531,13 +434,13 @@ __FOOTER__
     }
     fillSelect();
     updateHdrMulti();
-    renderMap();
+    renderTree();
     if (!multiSelectBound) {
       projectSelect.addEventListener('change', function () {
         currentSlug = projectSelect.value;
         closeDetailPopup();
         updateHdrMulti();
-        renderMap();
+        renderTree();
       });
       multiSelectBound = true;
     }
@@ -547,7 +450,7 @@ __FOOTER__
     projectRow.style.display = 'none';
     currentSlug = null;
     updateHdrLegacy();
-    renderMap();
+    renderTree();
   }
 
   function rerenderAll() {
@@ -563,51 +466,6 @@ __FOOTER__
       renderLegacy();
     }
   }
-
-  let drag = null;
-  viewport.addEventListener('pointerdown', function (ev) {
-    if (ev.target.closest('.mm-node')) return;
-    drag = { x: ev.clientX - panX, y: ev.clientY - panY, pid: ev.pointerId };
-    viewport.setPointerCapture(ev.pointerId);
-  });
-  viewport.addEventListener('pointermove', function (ev) {
-    if (!drag || drag.pid !== ev.pointerId) return;
-    panX = ev.clientX - drag.x;
-    panY = ev.clientY - drag.y;
-    applyPanZoom();
-  });
-  function endDrag(ev) {
-    if (drag && ev.pointerId === drag.pid) drag = null;
-  }
-  viewport.addEventListener('pointerup', endDrag);
-  viewport.addEventListener('pointercancel', endDrag);
-
-  viewport.addEventListener('wheel', function (ev) {
-    if (!ev.ctrlKey) return;
-    ev.preventDefault();
-    const z = ev.deltaY < 0 ? 1.08 : 1 / 1.08;
-    const old = scale;
-    scale = Math.min(2.5, Math.max(0.25, scale * z));
-    const rect = viewport.getBoundingClientRect();
-    const mx = ev.clientX - rect.left;
-    const my = ev.clientY - rect.top;
-    panX = mx - (mx - panX) * (scale / old);
-    panY = my - (my - panY) * (scale / old);
-    applyPanZoom();
-  }, { passive: false });
-
-  document.getElementById('zoom-in').addEventListener('click', function () {
-    scale = Math.min(2.5, scale * 1.15);
-    applyPanZoom();
-  });
-  document.getElementById('zoom-out').addEventListener('click', function () {
-    scale = Math.max(0.25, scale / 1.15);
-    applyPanZoom();
-  });
-  document.getElementById('zoom-reset').addEventListener('click', function () {
-    panX = 20; panY = 20; scale = 1;
-    applyPanZoom();
-  });
 
   (async function bootstrap() {
     try {
@@ -629,7 +487,7 @@ __FOOTER__
         renderLegacy();
       }
     } catch (e) {
-      document.body.innerHTML = '<p style="padding:2rem">Could not load mind map: ' + esc(e.message) + '</p>';
+      document.body.innerHTML = '<p style="padding:2rem">Could not load tree: ' + esc(e.message) + '</p>';
     }
   })();
 })();

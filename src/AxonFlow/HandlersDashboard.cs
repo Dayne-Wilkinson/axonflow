@@ -75,7 +75,7 @@ internal static partial class HandlersDashboard
                 return;
             }
             if (!ctx.ParseResult.GetValueForOption(CliRoot.QuietOption))
-                JsonOut.WriteText($"Watching DB; emitting every {interval}s to {outD.FullName} (index.html + mindmap.html) (Ctrl+C to stop).");
+                JsonOut.WriteText($"Watching DB; emitting every {interval}s to {outD.FullName} (index.html + tree.html + mindmap stub) (Ctrl+C to stop).");
             var quiet = ctx.ParseResult.GetValueForOption(CliRoot.QuietOption);
             var openAfter = ctx.ParseResult.GetValueForOption(openBrowser);
             var allProj = ctx.ParseResult.GetValueForOption(allProjects);
@@ -157,12 +157,14 @@ internal static partial class HandlersDashboard
             var path = Path.Combine(outDir.FullName, "index.html");
             var html = BuildHtml(json, refreshSeconds, pageTitle, refScopeHint, allProjects, served: null);
             File.WriteAllText(path, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            var mindPath = Path.Combine(outDir.FullName, "mindmap.html");
-            var mindHtml = BuildMindmapHtml(json, refreshSeconds, pageTitle, refScopeHint, allProjects, served: null);
-            File.WriteAllText(mindPath, mindHtml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            var treePath = Path.Combine(outDir.FullName, "tree.html");
+            var treeHtml = BuildTreeViewHtml(json, refreshSeconds, pageTitle, refScopeHint, allProjects, served: null);
+            File.WriteAllText(treePath, treeHtml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            var mindmapStubPath = Path.Combine(outDir.FullName, "mindmap.html");
+            File.WriteAllText(mindmapStubPath, MindmapHtmlRedirectStub(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
             if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption))
-                JsonOut.WriteOk(new { path, mindmapPath = mindPath, refreshSeconds, itemCount, allProjects });
+                JsonOut.WriteOk(new { path, treePath, mindmapLegacyStubPath = mindmapStubPath, refreshSeconds, itemCount, allProjects });
             else if (logEmit && !ctx.ParseResult.GetValueForOption(CliRoot.QuietOption))
                 JsonOut.WriteText($"Wrote {path} ({itemCount} items). Open file:// URL in a browser; run `dashboard watch` to refresh data periodically.");
 
@@ -175,6 +177,22 @@ internal static partial class HandlersDashboard
             c.Dispose();
         }
     }
+
+    /// <summary>Minimal HTML so old <c>mindmap.html</c> paths redirect to <c>tree.html</c>.</summary>
+    private static string MindmapHtmlRedirectStub() =>
+        """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta http-equiv="refresh" content="0;url=tree.html"/>
+  <title>Moved to tree view</title>
+</head>
+<body style="margin:0;padding:2rem;font-family:system-ui,Segoe UI,sans-serif;background:#0f1419;color:#e6edf3">
+  <p>This view moved to <a href="tree.html" style="color:#3d8bfd">tree.html</a> (tree view).</p>
+</body>
+</html>
+""";
 
     private static bool IsLoopbackUrl(string raw, out string? error)
     {
@@ -217,10 +235,12 @@ internal static partial class HandlersDashboard
         var path = Path.Combine(outDir.FullName, "index.html");
         var html = BuildHtml(bootstrap, refreshSeconds, allProjects ? "All projects" : projectSlug, allProjects ? "multi-project" : "live", allProjects, served: new DashboardServedConfig(refreshSeconds, projectSlug, allProjects));
         await File.WriteAllTextAsync(path, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken).ConfigureAwait(false);
-        var mindPath = Path.Combine(outDir.FullName, "mindmap.html");
+        var treePath = Path.Combine(outDir.FullName, "tree.html");
         var title = allProjects ? "All projects" : projectSlug;
-        var mindHtml = BuildMindmapHtml(bootstrap, refreshSeconds, title, allProjects ? "multi-project" : "live", allProjects, served: new DashboardServedConfig(refreshSeconds, projectSlug, allProjects));
-        await File.WriteAllTextAsync(mindPath, mindHtml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken).ConfigureAwait(false);
+        var treeHtml = BuildTreeViewHtml(bootstrap, refreshSeconds, title, allProjects ? "multi-project" : "live", allProjects, served: new DashboardServedConfig(refreshSeconds, projectSlug, allProjects));
+        await File.WriteAllTextAsync(treePath, treeHtml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken).ConfigureAwait(false);
+        var mindmapStubPath = Path.Combine(outDir.FullName, "mindmap.html");
+        await File.WriteAllTextAsync(mindmapStubPath, MindmapHtmlRedirectStub(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken).ConfigureAwait(false);
     }
 
     internal static WebApplication BuildServeWebApplication(
@@ -520,7 +540,7 @@ __META_REFRESH__
   <header>
     <div>
       <h1>AxonFlow dashboard</h1>
-      <nav class="nav-links" aria-label="Page navigation"><a href="mindmap.html">Mind map</a></nav>
+      <nav class="nav-links" aria-label="Page navigation"><a href="tree.html">Tree view</a></nav>
       <div class="meta" id="hdr-meta"></div>
       <div class="type-legend" id="type-legend" hidden>
         Types: epic · feature · story · task · bug · chore (badges + left stripe; not color-only — labels in cards)

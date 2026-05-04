@@ -33,6 +33,7 @@ public class DashboardServeTests
             var outDi = new DirectoryInfo(outDir);
             var jsonOpts = HandlersDashboard.CreateDashboardJsonSerializerOptions();
             await HandlersDashboard.WriteServeIndexHtmlAsync(outDi, 60, "default", false, jsonOpts);
+            Assert.True(File.Exists(Path.Combine(outDir, "tree.html")));
             Assert.True(File.Exists(Path.Combine(outDir, "mindmap.html")));
 
             app = HandlersDashboard.BuildServeWebApplication(db, outDi, "http://127.0.0.1:0", "default", false, jsonOpts);
@@ -60,11 +61,17 @@ public class DashboardServeTests
             Assert.True(itemDoc.RootElement.TryGetProperty("item", out var itemEl));
             Assert.Equal("AF-1", itemEl.GetProperty("ref").GetString());
 
+            using var treeRes = await client.GetAsync("tree.html");
+            Assert.Equal(HttpStatusCode.OK, treeRes.StatusCode);
+            var treeHtml = await treeRes.Content.ReadAsStringAsync();
+            Assert.Contains("id=\"tree-body\"", treeHtml);
+            Assert.Contains("__served", treeHtml);
+
             using var mmRes = await client.GetAsync("mindmap.html");
             Assert.Equal(HttpStatusCode.OK, mmRes.StatusCode);
             var mmHtml = await mmRes.Content.ReadAsStringAsync();
-            Assert.Contains("id=\"map-svg\"", mmHtml);
-            Assert.Contains("__served", mmHtml);
+            Assert.Contains("tree.html", mmHtml);
+            Assert.Contains("url=tree.html", mmHtml);
         }
         finally
         {
