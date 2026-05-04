@@ -35,6 +35,52 @@ disable-model-invocation: true
 7. Complete: **`item complete`** (respects children and predecessors unless `--force`).
 8. Session end: **`validate`** (structural + health); optional **`export --format markdown`** only if the user wants a git-visible snapshot.
 
+## Entry quality standard (mandatory)
+
+- Every item body must be **technically detailed**. Do not create one-line bodies for stories, tasks, bugs, chores, or spikes.
+- Write entries so a brand-new agent can resume after a context reset with no extra chat history.
+- Treat AxonFlow as the source of truth for handoff state; keep key details in the item body and notes, not only in transient conversation.
+
+### Minimum body requirements (all planned items)
+
+Each item body must include:
+
+1. **Objective** — exact outcome and why it matters.
+2. **Scope** — what is in and out.
+3. **Implementation details** — architecture, files/modules, APIs/contracts, data model expectations.
+4. **Execution steps** — concrete sequence to perform.
+5. **Validation plan** — how to verify (tests, commands, expected signals).
+6. **Risks/blockers** — known hazards, assumptions, dependencies.
+7. **Handoff context** — what the next agent should check first if work pauses.
+
+If this cannot fit clearly in one paragraph, use structured bullet points inside `body`.
+
+### Story decomposition rule (mandatory)
+
+- Stories are coordination containers and must be decomposed into executable child tasks.
+- Every story should have child tasks that are one-session sized and independently completable.
+- Do not mark a story in progress until there is at least one actionable child task.
+- Prefer explicit dependencies between child tasks when ordering matters (`dependencies` in import payload or `dep add`).
+
+Recommended task split under each story:
+
+- Setup / prep task (environment, schema, feature flag, scaffolding).
+- Core implementation task(s) (group by cohesive code path).
+- Validation task (tests, instrumentation, dashboards, manual checks).
+- Cleanup/follow-up task (docs, migration notes, rollback considerations) when needed.
+
+### Resume-safe note standard
+
+For active work, append notes frequently using `item note add` with:
+
+- current status and timestamped progress,
+- exact files/paths touched,
+- commands run and outcomes,
+- decisions made and rationale,
+- remaining work and next immediate command.
+
+Write notes so the next agent can continue immediately without re-discovery.
+
 ## CLI cheat sheet
 
 ```text
@@ -66,6 +112,8 @@ After global install (if you publish a tool), replace `dotnet run --project src/
 - **`client_key`** on planned rows for idempotent retries.
 - Emergent items: **`--discovered-from`** required unless the user explicitly allows **`--no-provenance`**.
 - Multi-agent: only **`item start`** items you own; use **`item next --assignee`** filtering.
+- Planned stories must include child tasks before execution; no story-only plans.
+- No one-line item bodies for planned work; include objective, scope, implementation details, validation, and handoff context.
 
 ## Remote
 
