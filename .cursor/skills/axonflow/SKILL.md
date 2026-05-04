@@ -88,6 +88,7 @@ dotnet run --project src/AxonFlow -- init --db .axonflow/axonflow.db
 dotnet run --project src/AxonFlow -- item add --db .axonflow/axonflow.db --type task --title "..." --body "..." --json
 dotnet run --project src/AxonFlow -- item update --db .axonflow/axonflow.db --ref AF-1 --body-file path/to/spec.md --json
 dotnet run --project src/AxonFlow -- item list --db .axonflow/axonflow.db --parent AF-12 --json
+dotnet run --project src/AxonFlow -- item list --db .axonflow/axonflow.db --assigned-to agent:composer --body-contains substring --updated-after 2026-05-01T00:00:00Z --json
 dotnet run --project src/AxonFlow -- item import --db .axonflow/axonflow.db --json --dry-run < plan.json
 dotnet run --project src/AxonFlow -- project set-name --db .axonflow/axonflow.db --slug default --name axonflow
 dotnet run --project src/AxonFlow -- item next --db .axonflow/axonflow.db --json

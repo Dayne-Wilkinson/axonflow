@@ -81,6 +81,9 @@ internal static class HandlersItem
         var str = new Option<string?>("--stream");
         var tc = new Option<string?>("--title-contains");
         var rp = new Option<string?>("--ref-prefix");
+        var asg = new Option<string?>("--assigned-to");
+        var bc = new Option<string?>("--body-contains");
+        var uaf = new Option<string?>("--updated-after", "ISO-8601 instant; items with updated_at >= this (UTC)");
         var sort = new Option<string>("--sort", () => "priority");
         var lim = new Option<int>("--limit", () => 200);
         list.AddOption(st);
@@ -89,6 +92,9 @@ internal static class HandlersItem
         list.AddOption(str);
         list.AddOption(tc);
         list.AddOption(rp);
+        list.AddOption(asg);
+        list.AddOption(bc);
+        list.AddOption(uaf);
         list.AddOption(sort);
         list.AddOption(lim);
         list.SetHandler(ctx => ItemList(
@@ -98,6 +104,9 @@ internal static class HandlersItem
             ctx.ParseResult.GetValueForOption(str),
             ctx.ParseResult.GetValueForOption(tc),
             ctx.ParseResult.GetValueForOption(rp),
+            ctx.ParseResult.GetValueForOption(asg),
+            ctx.ParseResult.GetValueForOption(bc),
+            ctx.ParseResult.GetValueForOption(uaf),
             ctx.ParseResult.GetValueForOption(sort)!,
             ctx.ParseResult.GetValueForOption(lim),
             ctx));
@@ -439,7 +448,8 @@ internal static class HandlersItem
         ctx.ExitCode = 0;
     }
 
-    public static void ItemList(string? status, string? type, string? parent, string? stream, string? titleContains, string? refPrefix, string sort, int limit, InvocationContext ctx)
+    public static void ItemList(string? status, string? type, string? parent, string? stream, string? titleContains, string? refPrefix,
+        string? assignedTo, string? bodyContains, string? updatedAfter, string sort, int limit, InvocationContext ctx)
     {
         if (!OpenDb(ctx, out var store, out var c, out var pid) || pid is null) return;
         string? parentIdForQuery = parent;
@@ -453,7 +463,22 @@ internal static class HandlersItem
             }
             parentIdForQuery = pRow.Id;
         }
-        var q = new Store.ItemListQuery(status, type, parentIdForQuery, stream, titleContains, refPrefix, sort, limit);
+        string? updatedIso = null;
+        if (!string.IsNullOrEmpty(updatedAfter))
+        {
+            if (!DateTimeOffset.TryParse(updatedAfter, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dto))
+            {
+                Err(ctx, "validation", "--updated-after must be a valid ISO-8601 date/time");
+                return;
+            }
+            updatedIso = dto.ToString("O");
+        }
+        var q = new Store.ItemListQuery(status, type, parentIdForQuery, stream, titleContains, refPrefix,
+            string.IsNullOrEmpty(assignedTo) ? null : assignedTo,
+            string.IsNullOrEmpty(bodyContains) ? null : bodyContains,
+            updatedIso,
+            sort, limit);
         var rows = store.ListItems(c, pid, q);
         var json = ctx.ParseResult.GetValueForOption(CliRoot.JsonOption);
         if (json) JsonOut.WriteOk(rows.Select(w => ItemJson.ItemDto(store, c, w)).ToList());
@@ -722,7 +747,7 @@ internal static class HandlersItem
     {
         if (!OpenDb(ctx, out var store, out var c, out var pid) || pid is null) return;
         var now = DateTimeOffset.UtcNow;
-        var all = store.ListItems(c, pid, new Store.ItemListQuery(null, null, null, null, null, null, "priority", 2000));
+        var all = store.ListItems(c, pid, new Store.ItemListQuery(null, null, null, null, null, null, null, null, null, "priority", 2000));
         var excluded = new List<object>();
         var candidates = new List<Store.WorkItemRow>();
         foreach (Store.WorkItemRow w in all)

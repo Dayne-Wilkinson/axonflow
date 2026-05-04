@@ -116,6 +116,85 @@ public class ItemCliTests
         }
     }
 
+    [Fact]
+    public async Task Item_list_filters_assigned_to_body_contains_updated_after_and_rejects_bad_timestamp()
+    {
+        var db = Path.Combine(Path.GetTempPath(), $"axonflow-itemcli-filters-{Guid.NewGuid():N}.db");
+        try
+        {
+            var parser = CreateParser();
+            Assert.Equal(0, await parser.InvokeAsync(new[] { "init", "--db", db }));
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "item", "add", "--db", db, "--type", "task", "--title", "Mine", "--json"
+            }));
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "item", "update", "--db", db, "--ref", "AF-1", "--assigned-to", "agent:x", "--json"
+            }));
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "item", "add", "--db", db, "--type", "task", "--title", "Yours", "--json"
+            }));
+
+            var (cAsg, jAsg) = await InvokeStdoutJsonLine(parser, new[]
+            {
+                "item", "list", "--db", db, "--assigned-to", "agent:x", "--json"
+            });
+            Assert.Equal(0, cAsg);
+            using (var doc = JsonDocument.Parse(jAsg))
+            {
+                var data = doc.RootElement.GetProperty("data");
+                Assert.Equal(JsonValueKind.Array, data.ValueKind);
+                Assert.Equal(1, data.GetArrayLength());
+                Assert.Equal("AF-1", data[0].GetProperty("ref").GetString());
+            }
+
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "item", "update", "--db", db, "--ref", "AF-2", "--body", "needleUnique_q9z", "--json"
+            }));
+            var (cBc, jBc) = await InvokeStdoutJsonLine(parser, new[]
+            {
+                "item", "list", "--db", db, "--body-contains", "needleUnique_q9z", "--json"
+            });
+            Assert.Equal(0, cBc);
+            using (var doc = JsonDocument.Parse(jBc))
+            {
+                var data = doc.RootElement.GetProperty("data");
+                Assert.Equal(1, data.GetArrayLength());
+                Assert.Equal("AF-2", data[0].GetProperty("ref").GetString());
+            }
+
+            Assert.Equal(3, await parser.InvokeAsync(new[]
+            {
+                "item", "list", "--db", db, "--updated-after", "not-a-date", "--json"
+            }));
+
+            await Task.Delay(1200);
+            var mid = DateTimeOffset.UtcNow.ToString("O");
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "item", "add", "--db", db, "--type", "task", "--title", "Late", "--json"
+            }));
+            var (cUa, jUa) = await InvokeStdoutJsonLine(parser, new[]
+            {
+                "item", "list", "--db", db, "--updated-after", mid, "--json"
+            });
+            Assert.Equal(0, cUa);
+            using (var doc = JsonDocument.Parse(jUa))
+            {
+                var data = doc.RootElement.GetProperty("data");
+                Assert.Equal(1, data.GetArrayLength());
+                Assert.Equal("AF-3", data[0].GetProperty("ref").GetString());
+            }
+        }
+        finally
+        {
+            try { File.Delete(db); } catch { /* ignore */ }
+        }
+    }
+
     private static Task<(int Code, string JsonLine)> InvokeStdoutJsonLine(Parser parser, string[] args)
     {
         lock (ConsoleRedirectGate)

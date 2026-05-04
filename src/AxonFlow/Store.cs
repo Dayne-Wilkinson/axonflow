@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Data.Sqlite;
 
 namespace AxonFlow;
@@ -438,6 +439,21 @@ public sealed class Store(string connectionString)
             sql += " AND (UPPER(p.ref_prefix) || '-' || w.ref_number) LIKE @rp ";
             cmd.Parameters.AddWithValue("@rp", q.RefPrefix.Trim().ToUpperInvariant() + "-%");
         }
+        if (q.AssignedTo is not null)
+        {
+            sql += " AND w.assigned_to = @asg ";
+            cmd.Parameters.AddWithValue("@asg", q.AssignedTo);
+        }
+        if (q.BodyContains is not null)
+        {
+            sql += " AND w.body LIKE @bc ESCAPE '\\' ";
+            cmd.Parameters.AddWithValue("@bc", SqlLikeContainsPattern(q.BodyContains));
+        }
+        if (q.UpdatedAfterIso is not null)
+        {
+            sql += " AND w.updated_at >= @uaf ";
+            cmd.Parameters.AddWithValue("@uaf", q.UpdatedAfterIso);
+        }
         sql += q.Sort == "updated" ? " ORDER BY w.updated_at DESC, w.ref_number ASC " : " ORDER BY w.priority ASC, w.ref_number ASC ";
         sql += " LIMIT @lim;";
         cmd.Parameters.AddWithValue("@lim", q.Limit <= 0 ? 500 : q.Limit);
@@ -521,6 +537,22 @@ public sealed class Store(string connectionString)
         string? Stream,
         string? TitleContains,
         string? RefPrefix,
+        string? AssignedTo,
+        string? BodyContains,
+        string? UpdatedAfterIso,
         string Sort,
         int Limit);
+
+    public static string SqlLikeContainsPattern(string literal)
+    {
+        var sb = new StringBuilder(literal.Length + 4);
+        sb.Append('%');
+        foreach (var ch in literal)
+        {
+            if (ch is '\\' or '%' or '_') sb.Append('\\');
+            sb.Append(ch);
+        }
+        sb.Append('%');
+        return sb.ToString();
+    }
 }
