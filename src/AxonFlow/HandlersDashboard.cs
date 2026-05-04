@@ -17,7 +17,7 @@ using Microsoft.Extensions.Logging;
 
 namespace AxonFlow;
 
-internal static class HandlersDashboard
+internal static partial class HandlersDashboard
 {
     public static void Register(RootCommand root)
     {
@@ -75,7 +75,7 @@ internal static class HandlersDashboard
                 return;
             }
             if (!ctx.ParseResult.GetValueForOption(CliRoot.QuietOption))
-                JsonOut.WriteText($"Watching DB; emitting every {interval}s to {Path.Combine(outD.FullName, "index.html")} (Ctrl+C to stop).");
+                JsonOut.WriteText($"Watching DB; emitting every {interval}s to {outD.FullName} (index.html + mindmap.html) (Ctrl+C to stop).");
             var quiet = ctx.ParseResult.GetValueForOption(CliRoot.QuietOption);
             var openAfter = ctx.ParseResult.GetValueForOption(openBrowser);
             var allProj = ctx.ParseResult.GetValueForOption(allProjects);
@@ -157,9 +157,12 @@ internal static class HandlersDashboard
             var path = Path.Combine(outDir.FullName, "index.html");
             var html = BuildHtml(json, refreshSeconds, pageTitle, refScopeHint, allProjects, served: null);
             File.WriteAllText(path, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            var mindPath = Path.Combine(outDir.FullName, "mindmap.html");
+            var mindHtml = BuildMindmapHtml(json, refreshSeconds, pageTitle, refScopeHint, allProjects, served: null);
+            File.WriteAllText(mindPath, mindHtml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
             if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption))
-                JsonOut.WriteOk(new { path, refreshSeconds, itemCount, allProjects });
+                JsonOut.WriteOk(new { path, mindmapPath = mindPath, refreshSeconds, itemCount, allProjects });
             else if (logEmit && !ctx.ParseResult.GetValueForOption(CliRoot.QuietOption))
                 JsonOut.WriteText($"Wrote {path} ({itemCount} items). Open file:// URL in a browser; run `dashboard watch` to refresh data periodically.");
 
@@ -214,6 +217,10 @@ internal static class HandlersDashboard
         var path = Path.Combine(outDir.FullName, "index.html");
         var html = BuildHtml(bootstrap, refreshSeconds, allProjects ? "All projects" : projectSlug, allProjects ? "multi-project" : "live", allProjects, served: new DashboardServedConfig(refreshSeconds, projectSlug, allProjects));
         await File.WriteAllTextAsync(path, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken).ConfigureAwait(false);
+        var mindPath = Path.Combine(outDir.FullName, "mindmap.html");
+        var title = allProjects ? "All projects" : projectSlug;
+        var mindHtml = BuildMindmapHtml(bootstrap, refreshSeconds, title, allProjects ? "multi-project" : "live", allProjects, served: new DashboardServedConfig(refreshSeconds, projectSlug, allProjects));
+        await File.WriteAllTextAsync(mindPath, mindHtml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken).ConfigureAwait(false);
     }
 
     internal static WebApplication BuildServeWebApplication(
@@ -424,6 +431,9 @@ __META_REFRESH__
       justify-content: space-between; background: var(--panel);
     }
     header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    .nav-links { margin-top: 0.35rem; font-size: 0.85rem; }
+    .nav-links a { color: var(--plan); text-decoration: none; }
+    .nav-links a:hover { text-decoration: underline; }
     header .meta { color: var(--muted); font-size: 0.85rem; }
     .project-row {
       display: none; align-items: center; gap: 0.5rem; width: 100%;
@@ -510,6 +520,7 @@ __META_REFRESH__
   <header>
     <div>
       <h1>AxonFlow dashboard</h1>
+      <nav class="nav-links" aria-label="Page navigation"><a href="mindmap.html">Mind map</a></nav>
       <div class="meta" id="hdr-meta"></div>
       <div class="type-legend" id="type-legend" hidden>
         Types: epic · feature · story · task · bug · chore (badges + left stripe; not color-only — labels in cards)
