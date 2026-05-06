@@ -46,25 +46,13 @@ internal static class HandlersDep
 
     private static bool Open(InvocationContext ctx, out Store store, out SqliteConnection c, out string? pid)
     {
-        store = null!;
-        c = null!;
-        pid = null;
-        var dbPath = Path.GetFullPath(ctx.ParseResult.GetValueForOption(CliRoot.DbOption)!);
-        if (!File.Exists(dbPath))
+        if (!CliRoot.TryOpenWorkload(ctx, out store!, out c!, out var projectId))
         {
-            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("not_found", "Database not found");
-            ctx.ExitCode = 3;
+            pid = null;
             return false;
         }
-        store = new Store($"Data Source={dbPath};Mode=ReadWrite");
-        c = store.Open();
-        pid = CliRoot.GetProjectId(ctx, store, c);
-        if (pid is null)
-        {
-            c.Dispose();
-            ctx.ExitCode = 3;
-            return false;
-        }
+
+        pid = projectId;
         return true;
     }
 

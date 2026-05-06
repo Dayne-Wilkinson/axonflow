@@ -24,17 +24,17 @@ public class ItemCliTests
 
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "add", "--db", db, "--type", "story", "--title", "Parent story", "--status", "ready", "--json"
+                "item", "add", "--db", db, "--project", "default", "--type", "story", "--title", "Parent story", "--status", "ready", "--json"
             }));
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "add", "--db", db, "--type", "task", "--title", "Child", "--parent", "AF-1",
+                "item", "add", "--db", db, "--project", "default", "--type", "task", "--title", "Child", "--parent", "AF-1",
                 "--body", "inline spec", "--status", "ready", "--json"
             }));
 
             var (cShow1, j1) = await InvokeStdoutJsonLine(parser, new[]
             {
-                "item", "show", "--db", db, "--ref", "AF-2", "--json"
+                "item", "show", "--db", db, "--project", "default", "--ref", "AF-2", "--json"
             });
             Assert.Equal(0, cShow1);
             using (var doc = JsonDocument.Parse(j1))
@@ -46,11 +46,11 @@ public class ItemCliTests
             await File.WriteAllTextAsync(bodyPath, "from file", Encoding.UTF8);
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "update", "--db", db, "--ref", "AF-2", "--body-file", bodyPath, "--json"
+                "item", "update", "--db", db, "--project", "default", "--ref", "AF-2", "--body-file", bodyPath, "--json"
             }));
             var (cShow2, j2) = await InvokeStdoutJsonLine(parser, new[]
             {
-                "item", "show", "--db", db, "--ref", "AF-2", "--json"
+                "item", "show", "--db", db, "--project", "default", "--ref", "AF-2", "--json"
             });
             Assert.Equal(0, cShow2);
             using (var doc = JsonDocument.Parse(j2))
@@ -61,11 +61,11 @@ public class ItemCliTests
 
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "update", "--db", db, "--ref", "AF-2", "--clear-body", "--json"
+                "item", "update", "--db", db, "--project", "default", "--ref", "AF-2", "--clear-body", "--json"
             }));
             var (cShow3, j3) = await InvokeStdoutJsonLine(parser, new[]
             {
-                "item", "show", "--db", db, "--ref", "AF-2", "--json"
+                "item", "show", "--db", db, "--project", "default", "--ref", "AF-2", "--json"
             });
             Assert.Equal(0, cShow3);
             using (var doc = JsonDocument.Parse(j3))
@@ -77,7 +77,7 @@ public class ItemCliTests
 
             var (cList, listLine) = await InvokeStdoutJsonLine(parser, new[]
             {
-                "item", "list", "--db", db, "--parent", "AF-1", "--json"
+                "item", "list", "--db", db, "--project", "default", "--parent", "AF-1", "--json"
             });
             Assert.Equal(0, cList);
             using var listDoc = JsonDocument.Parse(listLine);
@@ -103,11 +103,11 @@ public class ItemCliTests
             Assert.Equal(0, await parser.InvokeAsync(new[] { "init", "--db", db }));
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "add", "--db", db, "--type", "task", "--title", "T", "--json"
+                "item", "add", "--db", db, "--project", "default", "--type", "task", "--title", "T", "--json"
             }));
             Assert.NotEqual(0, await parser.InvokeAsync(new[]
             {
-                "item", "update", "--db", db, "--title", "x", "--json"
+                "item", "update", "--db", db, "--project", "default", "--title", "x", "--json"
             }));
         }
         finally
@@ -126,20 +126,20 @@ public class ItemCliTests
             Assert.Equal(0, await parser.InvokeAsync(new[] { "init", "--db", db }));
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "add", "--db", db, "--type", "task", "--title", "Mine", "--json"
+                "item", "add", "--db", db, "--project", "default", "--type", "task", "--title", "Mine", "--json"
             }));
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "update", "--db", db, "--ref", "AF-1", "--assigned-to", "agent:x", "--json"
+                "item", "update", "--db", db, "--project", "default", "--ref", "AF-1", "--assigned-to", "agent:x", "--json"
             }));
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "add", "--db", db, "--type", "task", "--title", "Yours", "--json"
+                "item", "add", "--db", db, "--project", "default", "--type", "task", "--title", "Yours", "--json"
             }));
 
             var (cAsg, jAsg) = await InvokeStdoutJsonLine(parser, new[]
             {
-                "item", "list", "--db", db, "--assigned-to", "agent:x", "--json"
+                "item", "list", "--db", db, "--project", "default", "--assigned-to", "agent:x", "--json"
             });
             Assert.Equal(0, cAsg);
             using (var doc = JsonDocument.Parse(jAsg))
@@ -152,11 +152,11 @@ public class ItemCliTests
 
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "update", "--db", db, "--ref", "AF-2", "--body", "needleUnique_q9z", "--json"
+                "item", "update", "--db", db, "--project", "default", "--ref", "AF-2", "--body", "needleUnique_q9z", "--json"
             }));
             var (cBc, jBc) = await InvokeStdoutJsonLine(parser, new[]
             {
-                "item", "list", "--db", db, "--body-contains", "needleUnique_q9z", "--json"
+                "item", "list", "--db", db, "--project", "default", "--body-contains", "needleUnique_q9z", "--json"
             });
             Assert.Equal(0, cBc);
             using (var doc = JsonDocument.Parse(jBc))
@@ -168,18 +168,18 @@ public class ItemCliTests
 
             Assert.Equal(3, await parser.InvokeAsync(new[]
             {
-                "item", "list", "--db", db, "--updated-after", "not-a-date", "--json"
+                "item", "list", "--db", db, "--project", "default", "--updated-after", "not-a-date", "--json"
             }));
 
             await Task.Delay(1200);
             var mid = DateTimeOffset.UtcNow.ToString("O");
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "add", "--db", db, "--type", "task", "--title", "Late", "--json"
+                "item", "add", "--db", db, "--project", "default", "--type", "task", "--title", "Late", "--json"
             }));
             var (cUa, jUa) = await InvokeStdoutJsonLine(parser, new[]
             {
-                "item", "list", "--db", db, "--updated-after", mid, "--json"
+                "item", "list", "--db", db, "--project", "default", "--updated-after", mid, "--json"
             });
             Assert.Equal(0, cUa);
             using (var doc = JsonDocument.Parse(jUa))

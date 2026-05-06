@@ -29,18 +29,7 @@ internal static class HandlersMeta
             return;
         }
 
-        Paths.EnsureDbDirectory(dbPath);
-        var cs = $"Data Source={dbPath};Mode=ReadWriteCreate";
-        using (var conn = new SqliteConnection(cs))
-        {
-            conn.Open();
-            Migration.ApplyInitialSchema(conn);
-        }
-
-        var store = new Store(cs);
-        using var c = store.Open();
-        if (store.CountProjects(c) == 0)
-            store.InsertDefaultProject(c);
+        DatabaseBootstrap.EnsureInitialized(dbPath);
 
         if (json)
             JsonOut.WriteOk(new { dbPath, message = "initialized" });
@@ -53,10 +42,10 @@ internal static class HandlersMeta
     {
         var dbPath = Path.GetFullPath(ctx.ParseResult.GetValueForOption(CliRoot.DbOption)!);
         var json = ctx.ParseResult.GetValueForOption(CliRoot.JsonOption);
-        if (!File.Exists(dbPath))
+        if (!DatabaseBootstrap.TryPrepare(dbPath, allowCreate: true, out var prepErr))
         {
-            if (json) JsonOut.WriteErr("not_found", "Database not found; run init first.");
-            else Console.Error.WriteLine("Database not found; run init first.");
+            if (json) JsonOut.WriteErr("not_found", prepErr!);
+            else Console.Error.WriteLine(prepErr);
             ctx.ExitCode = 3;
             return;
         }
@@ -84,13 +73,14 @@ internal static class HandlersMeta
     {
         var dbPath = Path.GetFullPath(ctx.ParseResult.GetValueForOption(CliRoot.DbOption)!);
         var json = ctx.ParseResult.GetValueForOption(CliRoot.JsonOption);
-        if (!File.Exists(dbPath))
+        if (!DatabaseBootstrap.TryPrepare(dbPath, allowCreate: true, out var prepErr))
         {
-            if (json) JsonOut.WriteErr("not_found", "Database not found; run init first.");
-            else Console.Error.WriteLine("Database not found; run init first.");
+            if (json) JsonOut.WriteErr("not_found", prepErr!);
+            else Console.Error.WriteLine(prepErr);
             ctx.ExitCode = 3;
             return;
         }
+
         var store = new Store($"Data Source={dbPath};Mode=ReadWrite");
         using var c = store.Open();
         var rows = store.ListProjects(c);
@@ -106,10 +96,10 @@ internal static class HandlersMeta
     {
         var dbPath = Path.GetFullPath(ctx.ParseResult.GetValueForOption(CliRoot.DbOption)!);
         var json = ctx.ParseResult.GetValueForOption(CliRoot.JsonOption);
-        if (!File.Exists(dbPath))
+        if (!DatabaseBootstrap.TryPrepare(dbPath, allowCreate: true, out var prepErr))
         {
-            if (json) JsonOut.WriteErr("not_found", "Database not found; run init first.");
-            else Console.Error.WriteLine("Database not found; run init first.");
+            if (json) JsonOut.WriteErr("not_found", prepErr!);
+            else Console.Error.WriteLine(prepErr);
             ctx.ExitCode = 3;
             return;
         }

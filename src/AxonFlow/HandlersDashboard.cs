@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 
@@ -21,161 +20,26 @@ internal static partial class HandlersDashboard
 {
     public static void Register(RootCommand root)
     {
-        var dashboard = new Command("dashboard", "Read-only HTML dashboard (static file + optional watch loop)");
-
-        var outDir = new Option<DirectoryInfo>("--out", () => new DirectoryInfo("dashboard"), "Output directory");
-        var refreshSec = new Option<int>("--refresh-seconds", () => 120, "HTML meta refresh interval (full page reload)");
-        var openBrowser = new Option<bool>("--open", () => false, "Open index.html in the default browser after a successful write");
-        var allProjects = new Option<bool>("--all-projects", () => false, "Embed all projects (schema v2) with an in-page project picker");
-
-        var emit = new Command("emit", "Write index.html with embedded snapshot (open via file://)");
-        emit.AddOption(outDir);
-        emit.AddOption(refreshSec);
-        emit.AddOption(openBrowser);
-        emit.AddOption(allProjects);
-        emit.SetHandler(ctx => RunEmit(
-            ctx.ParseResult.GetValueForOption(outDir)!,
-            ctx.ParseResult.GetValueForOption(refreshSec),
-            logEmit: true,
-            openAfterWrite: ctx.ParseResult.GetValueForOption(openBrowser),
-            allProjects: ctx.ParseResult.GetValueForOption(allProjects),
-            ctx));
-
-        var openCmd = new Command("open", "Emit once then open index.html in the default browser (same defaults as emit)");
-        openCmd.AddOption(outDir);
-        openCmd.AddOption(refreshSec);
-        openCmd.AddOption(allProjects);
-        openCmd.SetHandler(ctx => RunEmit(
-            ctx.ParseResult.GetValueForOption(outDir)!,
-            ctx.ParseResult.GetValueForOption(refreshSec),
-            logEmit: true,
-            openAfterWrite: true,
-            allProjects: ctx.ParseResult.GetValueForOption(allProjects),
-            ctx));
-
-        var watch = new Command("watch", "Re-run emit every interval (no HTTP server; keeps file:// view fresh)");
-        var intervalSec = new Option<int>("--interval", () => 120, "Seconds between emits");
-        watch.AddOption(outDir);
-        watch.AddOption(refreshSec);
-        watch.AddOption(intervalSec);
-        watch.AddOption(openBrowser);
-        watch.AddOption(allProjects);
-        watch.SetHandler(ctx =>
-        {
-            var outD = ctx.ParseResult.GetValueForOption(outDir)!;
-            var refresh = ctx.ParseResult.GetValueForOption(refreshSec);
-            var interval = ctx.ParseResult.GetValueForOption(intervalSec);
-            if (interval < 5)
-            {
-                if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption))
-                    JsonOut.WriteErr("validation", "interval must be at least 5 seconds");
-                else
-                    Console.Error.WriteLine("interval must be at least 5 seconds");
-                ctx.ExitCode = 2;
-                return;
-            }
-            if (!ctx.ParseResult.GetValueForOption(CliRoot.QuietOption))
-                JsonOut.WriteText($"Watching DB; emitting every {interval}s to {outD.FullName} (index.html + tree.html + mindmap stub) (Ctrl+C to stop).");
-            var quiet = ctx.ParseResult.GetValueForOption(CliRoot.QuietOption);
-            var openAfter = ctx.ParseResult.GetValueForOption(openBrowser);
-            var allProj = ctx.ParseResult.GetValueForOption(allProjects);
-            for (var first = true;; first = false)
-            {
-                RunEmit(outD, refresh, logEmit: !quiet, openAfterWrite: first && openAfter, allProjects: allProj, ctx);
-                if (ctx.ExitCode != 0) return;
-                Thread.Sleep(TimeSpan.FromSeconds(interval));
-            }
-        });
-
-        var urlsOpt = new Option<string>("--urls", () => "http://127.0.0.1:5057", "Loopback base URL for Kestrel (must use 127.0.0.1, localhost, or ::1)");
-        var serve = new Command("serve", "Kestrel loopback: static dashboard + read-only /api/snapshot (live fetch; Ctrl+C to stop)");
-        serve.AddOption(outDir);
-        serve.AddOption(refreshSec);
-        serve.AddOption(allProjects);
-        serve.AddOption(openBrowser);
-        serve.AddOption(urlsOpt);
-        serve.SetHandler(async ctx => await RunServeAsync(
-            ctx.ParseResult.GetValueForOption(outDir)!,
-            ctx.ParseResult.GetValueForOption(urlsOpt)!,
-            ctx.ParseResult.GetValueForOption(refreshSec),
-            ctx.ParseResult.GetValueForOption(allProjects),
-            ctx.ParseResult.GetValueForOption(openBrowser),
-            ctx));
-
-        dashboard.AddCommand(emit);
-        dashboard.AddCommand(openCmd);
-        dashboard.AddCommand(watch);
-        dashboard.AddCommand(serve);
+        var dashboard = new Command("dashboard",
+            "Read-only dashboard on loopback HTTP (live data refreshes automatically; Ctrl+C to stop)");
+        dashboard.SetHandler(async ctx => await RunDashboardCommandAsync(ctx).ConfigureAwait(false));
         root.AddCommand(dashboard);
     }
 
-    private static bool TryOpenConnection(InvocationContext ctx, out Store store, out SqliteConnection c)
+    private static async Task RunDashboardCommandAsync(InvocationContext ctx)
     {
-        store = null!;
-        c = null!;
-        var dbPath = Path.GetFullPath(ctx.ParseResult.GetValueForOption(CliRoot.DbOption)!);
-        if (!File.Exists(dbPath))
+        if (ctx.ParseResult.GetValueForOption(CliRoot.DryRunOption))
         {
             if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption))
-                JsonOut.WriteErr("not_found", "Database not found; run init first.");
+                JsonOut.WriteErr("validation", "dashboard does not support --dry-run");
             else
-                Console.Error.WriteLine("Database not found; run init first.");
-            ctx.ExitCode = 3;
-            return false;
+                Console.Error.WriteLine("dashboard does not support --dry-run.");
+            ctx.ExitCode = 2;
+            return;
         }
-        store = new Store($"Data Source={dbPath};Mode=ReadWrite");
-        c = store.Open();
-        return true;
-    }
 
-    private static void RunEmit(DirectoryInfo outDir, int refreshSeconds, bool logEmit, bool openAfterWrite, bool allProjects, InvocationContext ctx)
-    {
-        if (!TryOpenConnection(ctx, out var store, out var c)) return;
-        try
-        {
-            var jsonOpts = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            };
-
-            var slug = ctx.ParseResult.GetValueForOption(CliRoot.ProjectOption)!;
-            if (!allProjects && CliRoot.GetProjectId(ctx, store, c) is null)
-            {
-                c.Dispose();
-                ctx.ExitCode = 3;
-                return;
-            }
-
-            var built = DashboardSnapshot.Build(store, c, slug, allProjects, jsonOpts);
-            var json = built.Json;
-            var pageTitle = built.PageTitle;
-            var refScopeHint = built.RefScopeHint;
-            var itemCount = built.ItemCount;
-
-            outDir.Create();
-            var path = Path.Combine(outDir.FullName, "index.html");
-            var html = BuildHtml(json, refreshSeconds, pageTitle, refScopeHint, allProjects, served: null);
-            File.WriteAllText(path, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            var treePath = Path.Combine(outDir.FullName, "tree.html");
-            var treeHtml = BuildTreeViewHtml(json, refreshSeconds, pageTitle, refScopeHint, allProjects, served: null);
-            File.WriteAllText(treePath, treeHtml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            var mindmapStubPath = Path.Combine(outDir.FullName, "mindmap.html");
-            File.WriteAllText(mindmapStubPath, MindmapHtmlRedirectStub(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-
-            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption))
-                JsonOut.WriteOk(new { path, treePath, mindmapLegacyStubPath = mindmapStubPath, refreshSeconds, itemCount, allProjects });
-            else if (logEmit && !ctx.ParseResult.GetValueForOption(CliRoot.QuietOption))
-                JsonOut.WriteText($"Wrote {path} ({itemCount} items). Open file:// URL in a browser; run `dashboard watch` to refresh data periodically.");
-
-            ctx.ExitCode = 0;
-            if (openAfterWrite && !ctx.ParseResult.GetValueForOption(CliRoot.JsonOption) && !TryLaunchDefaultBrowser(path))
-                ctx.ExitCode = 4;
-        }
-        finally
-        {
-            c.Dispose();
-        }
+        const string listenUrl = "http://127.0.0.1:5057";
+        await RunServeAsync(ctx, Paths.DashboardServeCacheDirectory(), listenUrl, pollSeconds: 120).ConfigureAwait(false);
     }
 
     /// <summary>Minimal HTML so old <c>mindmap.html</c> paths redirect to <c>tree.html</c>.</summary>
@@ -329,7 +193,7 @@ internal static partial class HandlersDashboard
         return app;
     }
 
-    private static async Task RunServeAsync(DirectoryInfo outDir, string urls, int refreshSeconds, bool allProjects, bool openBrowser, InvocationContext ctx)
+    private static async Task RunServeAsync(InvocationContext ctx, DirectoryInfo outDir, string urls, int pollSeconds)
     {
         if (!IsLoopbackUrl(urls, out var urlErr))
         {
@@ -340,47 +204,28 @@ internal static partial class HandlersDashboard
         }
 
         var dbPath = Path.GetFullPath(ctx.ParseResult.GetValueForOption(CliRoot.DbOption)!);
-        if (!File.Exists(dbPath))
-        {
-            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("not_found", "Database not found; run init first.");
-            else Console.Error.WriteLine("Database not found; run init first.");
-            ctx.ExitCode = 3;
-            return;
-        }
+        DatabaseBootstrap.EnsureInitialized(dbPath);
 
-        var projectSlug = ctx.ParseResult.GetValueForOption(CliRoot.ProjectOption)!;
-        var probeStore = new Store($"Data Source={dbPath};Mode=ReadOnly");
+        const bool allProjects = true;
+        var projectSlug = CliRoot.ResolveProjectSlug(ctx);
+        var probeStore = new Store($"Data Source={dbPath};Mode=ReadWrite");
         using (var pc = probeStore.Open())
-        {
-            if (!allProjects && probeStore.GetProjectId(pc, projectSlug) is null)
-            {
-                if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("not_found", "Project not found for slug.");
-                else Console.Error.WriteLine("Project not found for slug.");
-                ctx.ExitCode = 3;
-                return;
-            }
-        }
+            CliRoot.EnsureProjectExists(ctx, probeStore, pc);
 
         var jsonOpts = CreateDashboardJsonSerializerOptions();
-        await WriteServeIndexHtmlAsync(outDir, refreshSeconds, projectSlug, allProjects, jsonOpts).ConfigureAwait(false);
-        var path = Path.Combine(outDir.FullName, "index.html");
-
-        if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption))
-        {
-            JsonOut.WriteOk(new { path, urls, refreshSeconds, allProjects });
-            ctx.ExitCode = 0;
-            return;
-        }
+        await WriteServeIndexHtmlAsync(outDir, pollSeconds, projectSlug, allProjects, jsonOpts).ConfigureAwait(false);
 
         var app = BuildServeWebApplication(dbPath, outDir, urls, projectSlug, allProjects, jsonOpts);
 
         if (!ctx.ParseResult.GetValueForOption(CliRoot.QuietOption))
-            JsonOut.WriteText($"Serving dashboard at {urls} (Ctrl+C to stop). GET /api/snapshot and /api/item");
-
-        if (openBrowser && !TryLaunchDefaultBrowser(urls))
-            ctx.ExitCode = 4;
+            JsonOut.WriteText($"Serving dashboard at {urls.TrimEnd('/')}/ (poll {pollSeconds}s; Ctrl+C to stop). Static cache: {outDir.FullName}");
 
         ctx.ExitCode = 0;
+
+        var openBrowser = !ctx.ParseResult.GetValueForOption(CliRoot.JsonOption);
+        if (openBrowser && !TryLaunchDefaultBrowser(urls.TrimEnd('/') + "/"))
+            ctx.ExitCode = 4;
+
         await app.RunAsync().ConfigureAwait(false);
     }
 
@@ -416,10 +261,10 @@ internal static partial class HandlersDashboard
             ? $"""  <meta http-equiv="refresh" content="{refreshSeconds}"/>"""
             : "";
         var footerBody = served is not null
-            ? $"<p>Live data from <code>/api/snapshot</code> (poll every <strong>{served.Value.PollSeconds}</strong>s). Offline snapshot: <code>axonflow dashboard emit …</code>. Stop server with <code>Ctrl+C</code>.</p>"
+            ? $"<p>Live data from <code>/api/snapshot</code> · auto-refresh every <strong>{served.Value.PollSeconds}</strong>s. Stop with <code>Ctrl+C</code>.</p>"
             : (multiProject
-                ? $"<p>Multiple projects in this database. Use the picker to switch. Page reloads every <strong>{refreshSeconds}</strong>s (meta refresh). Run <code>axonflow dashboard watch --all-projects …</code> to refresh the file.</p>"
-                : $"<p>Read-only view of <strong>{System.Net.WebUtility.HtmlEncode(refScopeHint)}</strong> items. Page reloads every <strong>{refreshSeconds}</strong>s (meta refresh). For live updates to the snapshot file, run: <code>axonflow dashboard watch --db … --out …</code> or <code>axonflow dashboard serve …</code>.</p>");
+                ? $"<p>Multiple projects in this database. Use the picker to switch. Page reloads every <strong>{refreshSeconds}</strong>s.</p>"
+                : $"<p>Read-only view of <strong>{System.Net.WebUtility.HtmlEncode(refScopeHint)}</strong> items.</p>");
         var head = """
 <!DOCTYPE html>
 <html lang="en">

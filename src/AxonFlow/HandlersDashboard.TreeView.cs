@@ -14,7 +14,7 @@ internal static partial class HandlersDashboard
             ? $"""  <meta http-equiv="refresh" content="{refreshSeconds}"/>"""
             : "";
         var footerBody = served is not null
-            ? $"<p>Live tree from <code>/api/snapshot</code> (poll every <strong>{served.Value.PollSeconds}</strong>s). Board: <a href=\"index.html\">index.html</a>. Offline: <code>axonflow dashboard emit …</code>.</p>"
+            ? $"<p>Live tree from <code>/api/snapshot</code> (poll every <strong>{served.Value.PollSeconds}</strong>s). Board: <a href=\"index.html\">index.html</a>. Restart <code>axonflow dashboard</code> to refresh the HTML files written to your dashboard cache directory.</p>"
             : (multiProject
                 ? $"<p>Tree view (multi-project). Use the project picker. Page reloads every <strong>{refreshSeconds}</strong>s. Board: <a href=\"index.html\">index.html</a>.</p>"
                 : $"<p>Tree view · {WebUtility.HtmlEncode(refScopeHint)}. Reload every <strong>{refreshSeconds}</strong>s. Board: <a href=\"index.html\">index.html</a>.</p>");
