@@ -1,0 +1,142 @@
+{
+  "items": [
+    {
+      "tempId": "epic",
+      "clientKey": "af-2026-treeview-type-status-epic",
+      "type": "epic",
+      "stream": "plan",
+      "title": "Dashboard tree view: prominent type labels and readable status semantics",
+      "status": "backlog",
+      "priority": 5,
+      "body": "**Objective:** Improve `tree.html` so every row communicates **work item type** and **lifecycle status** at a glance—aligned with AxonFlow domains (backlog, ready, in progress, blocked, deferred/snoozed, done/closed, cancelled)—without changing snapshot schema or SQLite.\n\n**Scope in:** `src/AxonFlow/HandlersDashboard.TreeView.cs` (embedded CSS/JS/HTML), optional tiny shared conventions with board styles in `HandlersDashboard.cs` only if duplication is harmful. **Scope out:** Mind-map stub, REST write APIs, new snapshot fields unless a gap is proven (prefer client-side derivation from existing `type` + `status` + `completedAt`).\n\n**Implementation details:** Snapshot items already expose `type`, `status`, `completedAt`, `snoozedUntil`, `blockedReason` via `ItemJson.ItemDto`. Today `renderTree()` prints plain lowercase type and underscored status strings (e.g. `in progress` after replace). Board cards use CSS variables (`--plan`, `--emergent`, `--done`, etc.). Tree should add **semantic cell markup** (`<span class=\"af-type af-type-task\">`, `<span class=\"af-status af-status-backlog\">`) and **visual tokens** (pill/chip/badge, optional icon text) with a **legend** explaining open vs terminal states.\n\n**Execution steps:** (1) Lock vocabulary mapping from raw `status` to user-facing chip label + tone. (2) Implement CSS + DOM in tree only. (3) Verify multi-project bundle + legacy v1 snapshot. (4) Manual `axonflow dashboard` smoke. (5) Optional test: static HTML fixture or regex on generated fragment if tests already pattern-match dashboard output.\n\n**Validation plan:** Items spanning all statuses render distinct chips; colour is not the only cue (text + shape). Zoom 200%; keyboard row focus still readable. Detail popup unchanged.\n\n**Risks/blockers:** Status values are free-form strings from store—normalize unknowns to neutral styling. WCAG contrast on dark panel background.\n\n**Handoff context:** Read `renderTree()` and board card class patterns in `HandlersDashboard.cs`; compare `ItemDto` fields to tree needs before adding API fields."
+    },
+    {
+      "tempId": "s1",
+      "clientKey": "af-2026-treeview-story-field-audit",
+      "parentTempId": "epic",
+      "type": "story",
+      "stream": "plan",
+      "title": "Story: audit snapshot fields and define type/status presentation map",
+      "status": "backlog",
+      "priority": 12,
+      "body": "**Objective:** Produce a single source of truth mapping **raw** `type` and `status` strings (plus `completedAt`, `snoozedUntil`, `blockedByWorkItemId`) to **tree UI** labels and CSS classes so implementation does not guess per row.\n\n**Scope in:** Read-only analysis of `ItemJson.ItemDto`, `DashboardSnapshot` v1/v2, current tree `renderTree()` row template. **Scope out:** Changing CLI status vocabulary or DB constraints.\n\n**Implementation details:** Enumerate statuses used in codebase (`HandlersItem`, `Store.SetStatus`): at minimum `backlog`, `ready`, `in_progress`, `blocked`, `done`, `cancelled`, defer/snooze semantics. Decide whether \"open\" aggregates non-terminal states for a secondary badge. Document fallback for unexpected status strings.\n\n**Execution steps:** (1) Grep/read status transitions. (2) Table: raw → display label → semantic bucket (open / blocked / parked / terminal-success / terminal-cancelled). (3) Table: type → short label + optional icon character + CSS class suffix. (4) Paste summary as AxonFlow note on this story when done.\n\n**Validation plan:** Review table with at least one example row per bucket from a live DB or test fixture.\n\n**Risks/blockers:** `in_progress` vs `in progress` display—pick one canonical display string.\n\n**Handoff context:** Deliverable is the mapping doc (in item notes or child task body) before CSS work starts."
+    },
+    {
+      "tempId": "s2",
+      "clientKey": "af-2026-treeview-story-styles-markup",
+      "parentTempId": "epic",
+      "type": "story",
+      "stream": "plan",
+      "title": "Story: implement type badges and status chips in tree table",
+      "status": "backlog",
+      "priority": 14,
+      "body": "**Objective:** Update tree view rendering so **Type** and **Status** columns use **badges/chips** with colour + text, clearly distinguishing **open** work from **done (closed)** and **cancelled**, and surfacing **backlog** vs **ready** vs **in progress** vs **blocked**.\n\n**Scope in:** `BuildTreeViewHtml` CSS block; `renderTree()` cell `innerHTML` construction; optional small pure JS helpers (`formatStatusLabel`, `statusClass`, `typeClass`) inline in the same file. **Scope out:** Board page redesign.\n\n**Implementation details:** Add classes such as `.af-chip`, `.af-type-epic`, `.af-status-done`. Reuse colour tokens from `:root` already in tree CSS (`--plan`, `--emergent`, `--done`, `--blocked`, `--muted`) for cohesion. Terminal states (`done`, `cancelled`) get distinct styles; `cancelled` must not look like `done`. Blocked may use `--blocked` or a dedicated warning tone.\n\n**Execution steps:** (1) Add CSS for chips (padding, radius, font-size, uppercase optional). (2) Replace plain text cells with `<span>` structure. (3) Wire `it.type` and `it.status` through mappers from story s1. (4) Keep **Deps** column unchanged.\n\n**Validation plan:** Visual check with mixed-status fixture; verify HTML escapes still applied (`esc()` on user text, not on class names).\n\n**Risks/blockers:** Do not break `esc()`—only escape title/ref text, not constructed class names.\n\n**Handoff context:** Complete s1 mapping first; branch from `major-changes` or `main` per team flow."
+    },
+    {
+      "tempId": "s3",
+      "clientKey": "af-2026-treeview-story-a11y-legend",
+      "parentTempId": "epic",
+      "type": "story",
+      "stream": "plan",
+      "title": "Story: legend, aria, and contrast for type/status in tree view",
+      "status": "backlog",
+      "priority": 16,
+      "body": "**Objective:** Make the enhanced type/status presentation **accessible**: screen readers announce status meaning; colour is supplemental; users can learn the legend without opening the detail popup.\n\n**Scope in:** Header `type-legend` region, `aria-label` / `title` attributes on chips, focus ring on rows if needed. **Scope out:** Full WCAG audit of entire dashboard.\n\n**Implementation details:** Expose human-readable status in `aria-label` on each row or on status cell (e.g. \"Status: cancelled\"). Unhide or replace `#type-legend` with a compact key (Open / Done / Cancelled / Blocked). Ensure contrast ratio ≥ 4.5:1 for chip text on chip background for primary combinations.\n\n**Execution steps:** (1) Design legend copy (short). (2) Add ARIA to table cells. (3) Verify with keyboard-only navigation and one screen reader spot-check if available.\n\n**Validation plan:** axe DevTools or manual tab order; no duplicate verbose announcements on every cell if avoidable.\n\n**Risks/blockers:** Over-long `aria-label` if title is huge—keep label to type+status+ref.\n\n**Handoff context:** Depends on s2 markup structure."
+    },
+    {
+      "tempId": "s4",
+      "clientKey": "af-2026-treeview-story-validate",
+      "parentTempId": "epic",
+      "type": "story",
+      "stream": "plan",
+      "title": "Story: verify tree view across served and static bootstrap paths",
+      "status": "backlog",
+      "priority": 18,
+      "body": "**Objective:** Confirm the tree page behaves correctly for **served** (`__served` + `/api/snapshot` polling) and **embedded bootstrap** (meta refresh / static file) paths, and that **all-projects** switching still renders chips correctly.\n\n**Scope in:** Manual QA script; optional extension to `tests/AxonFlow.Tests` if an existing test writes `tree.html` via `WriteServeIndexHtmlAsync` or similar. **Scope out:** Playwright E2E unless already standard.\n\n**Implementation details:** Run `axonflow dashboard`, open `tree.html`, exercise project dropdown. Capture before/after screenshots optional. If automated: assert generated HTML contains a status chip class for a known fixture item.\n\n**Execution steps:** (1) Document matrix: single project v2, all-projects v2, legacy v1 if still supported in tests. (2) Execute matrix. (3) File emergent bugs as new items under this epic.\n\n**Validation plan:** Matrix 100% pass; `dotnet test` green if tests added.\n\n**Risks/blockers:** Legacy v1 path may lack `projectSlug` on items—ensure mappers handle.\n\n**Handoff context:** Re-run after s2+s3 merge."
+    },
+    {
+      "tempId": "t1",
+      "clientKey": "af-2026-treeview-task-status-inventory",
+      "parentTempId": "s1",
+      "type": "task",
+      "stream": "plan",
+      "title": "Task: inventory all status and type strings used in production code paths",
+      "status": "backlog",
+      "priority": 52,
+      "body": "**Objective:** List every `status` value the CLI/store can assign and every `type` default or common value so tree mappers stay exhaustive.\n\n**Scope:** Grep `SetStatus`, `ItemAdd`, validation in `HandlersItem`, `Store` constraints. **Out:** Changing enums.\n\n**Implementation:** Produce a bullet list sorted by frequency assumption; note `done` vs `cancelled` terminal rules.\n\n**Execution:** Grep + read; paste results into parent story note.\n\n**Validation:** Peer review in PR or second agent.\n\n**Risks:** Dynamic strings from import—document \"unknown\" bucket.\n\n**Handoff:** Output feeds s1 acceptance."
+    },
+    {
+      "tempId": "t2",
+      "clientKey": "af-2026-treeview-task-presenter-spec",
+      "parentTempId": "s1",
+      "type": "task",
+      "stream": "plan",
+      "title": "Task: write display map table (raw → label + CSS bucket) in story notes",
+      "status": "backlog",
+      "priority": 54,
+      "body": "**Objective:** Finalize the **presentation map** as an implementable spec: each status → chip text, semantic bucket, CSS class suffix; each type → badge text and class.\n\n**Scope:** Documentation only (AxonFlow `item note add` on s1). **Out:** Code.\n\n**Implementation:** Markdown table in note; explicitly state handling for `snoozedUntil` (show \"Snoozed\" overlay or replace status display policy).\n\n**Execution:** After t1; request user approval on label wording if product-sensitive.\n\n**Validation:** Implementer can code s2 without reinterpretation.\n\n**Risks:** Snooze vs defer naming—match CLI help terms.\n\n**Handoff:** s2 implementer reads latest note on s1."
+    },
+    {
+      "tempId": "t3",
+      "clientKey": "af-2026-treeview-task-css-chips",
+      "parentTempId": "s2",
+      "type": "task",
+      "stream": "plan",
+      "title": "Task: add chip/badge CSS and status/type color tokens to tree view stylesheet",
+      "status": "backlog",
+      "priority": 56,
+      "body": "**Objective:** Extend embedded `<style>` in `BuildTreeViewHtml` with reusable chip rules and per-bucket colours for type and status.\n\n**Scope:** CSS only. **Out:** JS logic (separate task).\n\n**Implementation:** Use `:root` variables; support `.af-chip`, `.af-chip-muted`, status variants; ensure `cancelled` strikethrough or distinct border.\n\n**Execution:** Edit `HandlersDashboard.TreeView.cs` style block; keep payload size reasonable.\n\n**Validation:** Visual review in browser.\n\n**Risks:** Specificity fights with `td` padding—scope under `#tree-table`.\n\n**Handoff:** t4 wires classes."
+    },
+    {
+      "tempId": "t4",
+      "clientKey": "af-2026-treeview-task-render-js",
+      "parentTempId": "s2",
+      "type": "task",
+      "stream": "plan",
+      "title": "Task: update renderTree() to emit chip markup using presentation map",
+      "status": "backlog",
+      "priority": 58,
+      "body": "**Objective:** Change `tr.innerHTML` construction so Type/Status columns render `<span class=\"…\">` chips per map; keep **Ref**/**Title** escaped.\n\n**Scope:** Inline JS inside `HandlersDashboard.TreeView.cs`. **Out:** Snapshot C#.\n\n**Implementation:** Add functions `chipType(it.type)`, `chipStatus(it)`; unknown → `.af-chip-unknown`. Optionally append small \"Closed\" indicator when `completedAt` set—only if map says so.\n\n**Execution:** Implement after t3 CSS lands; reconcile with board naming.\n\n**Validation:** Mixed rows in live DB; no console errors.\n\n**Risks:** innerHTML injection—never interpolate raw title into class.\n\n**Handoff:** s3 adds aria refinements."
+    },
+    {
+      "tempId": "t5",
+      "parentTempId": "s3",
+      "clientKey": "af-2026-treeview-task-aria-legend",
+      "type": "task",
+      "stream": "plan",
+      "title": "Task: expose legend text and row/cell aria labels for statuses",
+      "status": "backlog",
+      "priority": 60,
+      "body": "**Objective:** Unhide/implement `#type-legend` content describing chips; add `aria-label` on rows for ref+type+status+truncated title.\n\n**Scope:** Tree header + JS. **Out:** Board.\n\n**Implementation:** `tr.setAttribute('aria-label', …)` built from sanitized fragments.\n\n**Execution:** After t4.\n\n**Validation:** Narrator/VoiceOver spot check.\n\n**Risks:** Label too long—cap title fragment.\n\n**Handoff:** s4 QA includes a11y step."
+    },
+    {
+      "tempId": "t6",
+      "parentTempId": "s4",
+      "clientKey": "af-2026-treeview-task-qa-matrix",
+      "type": "task",
+      "stream": "plan",
+      "title": "Task: run manual QA matrix and record results in epic notes",
+      "status": "backlog",
+      "priority": 62,
+      "body": "**Objective:** Execute the v2 single/all-project and polling refresh scenarios; confirm chips update after reload.\n\n**Scope:** Manual. **Out:** Automation.\n\n**Implementation:** Checklist in epic note.\n\n**Validation:** All rows pass visual + functional checks.\n\n**Risks:** Port clash—use default loopback URL.\n\n**Handoff:** Close epic when gates met."
+    },
+    {
+      "tempId": "t7",
+      "parentTempId": "s4",
+      "clientKey": "af-2026-treeview-task-tests-optional",
+      "type": "task",
+      "stream": "plan",
+      "title": "Task: extend dashboard HTML tests if present to assert status chip markup",
+      "status": "backlog",
+      "priority": 64,
+      "body": "**Objective:** Prevent regression by asserting `tree.html` contains chip class markers or substring for a seeded item.\n\n**Scope:** `tests/AxonFlow.Tests` only if harness exists (`DashboardEmitTests` / static HTML helpers). Skip if brittle.\n\n**Implementation:** Reuse temporary DB pattern from existing dashboard tests.\n\n**Validation:** `dotnet test` passes.\n\n**Risks:** Over-specific CSS class names—assert prefix pattern.\n\n**Handoff:** Document in SKILL if new test convention."
+    }
+  ],
+  "dependencies": [
+    { "predecessorTempId": "s1", "successorTempId": "s2", "kind": "finish_start" },
+    { "predecessorTempId": "s2", "successorTempId": "s3", "kind": "finish_start" },
+    { "predecessorTempId": "s3", "successorTempId": "s4", "kind": "finish_start" },
+    { "predecessorTempId": "t1", "successorTempId": "t2", "kind": "finish_start" },
+    { "predecessorTempId": "t3", "successorTempId": "t4", "kind": "finish_start" }
+  ]
+}

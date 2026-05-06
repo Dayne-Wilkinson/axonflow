@@ -21,13 +21,17 @@ disable-model-invocation: false
 
 - **Default `--db`** is **`~/.axonflow/axonflow.db`** (Windows: **`%USERPROFILE%\.axonflow\axonflow.db`**). The first non-dry-run command that needs the DB creates it; you do **not** rely on a separate “repo-local” database for day-to-day use.
 - **`--db <path>`** is only for overrides (tests, migration, advanced cases). Treat the default file as the **single logical store** for a machine; **`--project`** partitions work inside that file.
-- **`--project`** — pass an explicit slug whenever the user names a product/workspace. **If you omit `--project`, AxonFlow derives the slug from the current directory name** (lowercase, hyphenated). In scripts and tests, pin **`--project default`** when targeting the bootstrap project.
+- **Project slug = workspace identity** — align work with the **repository (or product) folder** you are in. The slug AxonFlow infers from cwd is a **normalized form of that folder name** (lowercase, hyphenated, ASCII). Prefer that convention when creating projects too: pick a **sensible variant** of the folder name (`MyApp` → `myapp`, `some_service` → `some-service`), not unrelated names. **Do not** park real product work in **`default`** unless that slug is intentionally this product’s home.
+- **Check the database before any write** — run **`project list --json`** (same `--db`) **before** `item import`, first `item add`, or resuming a plan after opening a different repo. Confirm which **slug** (and display name) already exists for this workspace. If nothing matches, **`project add --name … --slug …`** using the folder-aligned slug above, then target that slug for all subsequent commands. Skipping this step is how work lands in the wrong partition when the DB already contains multiple projects or names from another machine.
+- **After switching directories or repos, pin `--project`** — If you omit `--project`, the slug comes from **the shell’s current directory name only**. `cd` to a parent path, a different drive, or another clone can silently retarget **`item add` / `item import` / `item start`** to the wrong project. When you have **more than one project** in the DB or you **changed folders** since the last command, pass **`--project <slug>`** explicitly until cwd is confirmed to be the intended repo root.
+- **Dashboard impact** — The read-only dashboard is **partitioned by project**. Items exist in exactly one project row in the picker. Wrong slug → work is **missing** from the board you expect or **mixed** with another product’s graph. Verifying `project list` + using the correct `--project` prevents that.
+- **`--project` summary** — Use explicit **`--project`** whenever there is ambiguity. In **this repository**, folder **`AxonFlow`** → slug **`axonflow`**. In **automated tests** only, pin **`--project default`** when the harness seeds that slug.
 - A **.NET global tool** puts `axonflow` on `PATH` under `~/.dotnet/tools` (Windows: `%USERPROFILE%\.dotnet\tools`); only the binary lives there—not the database.
 
 ## Loop
 
 1. **`schema`** only when debugging version skew. Do **not** require `init`; the graph is ready after the first real write (or use `init` deliberately if the user wants explicit setup).
-2. Initial breakdown: **`item import --json`** with `clientKey`, `tempId`, `stream: plan`, and `dependencies`; run **`--dry-run`** first on large payloads. (**`--dry-run` + missing DB** fails—run one non-dry command first, or pass an existing `--db`.)
+2. **`project list --json`**; align **`--project`** with this folder’s slug (create with **`project add`** if missing). Initial breakdown: **`item import`** with `clientKey`, `tempId`, `stream: plan`, and `dependencies`; run **`--dry-run`** first on large payloads. (**`--dry-run` + missing DB** fails—run one non-dry command first, or pass an existing `--db`.)
 3. Before coding: **`item next --json`** — read `picked` and `excluded` entries.
 4. Claim work: **`item start --assignee agent:<yourName> --ref AF-n`** (never skip in multi-agent flows).
 5. During work: new findings → **`item add --stream emergent --discovered-from <activeRef> --client-key ...`**; append **`item note add`** for decisions/progress.
@@ -93,12 +97,13 @@ Write notes so the next agent can continue immediately without re-discovery.
 ## CLI cheat sheet
 
 ```text
-# Default global DB; add --project <slug> when pinning (or rely on cwd inference).
-dotnet run --project src/AxonFlow -- item add --type task --title "..." --body "..." --json
+# Default global DB. List projects before imports so the slug matches this workspace:
+dotnet run --project src/AxonFlow -- project list --json
+dotnet run --project src/AxonFlow -- item add --project axonflow --type task --title "..." --body "..." --json
 dotnet run --project src/AxonFlow -- item update --ref AF-1 --body-file path/to/spec.md --json
 dotnet run --project src/AxonFlow -- item list --parent AF-12 --json
 dotnet run --project src/AxonFlow -- item list --assigned-to agent:composer --body-contains needle --updated-after 2026-05-01T00:00:00Z --json
-dotnet run --project src/AxonFlow -- item import --json --dry-run < plan.json
+dotnet run --project src/AxonFlow -- item import --project axonflow --file plan.json --json --dry-run
 dotnet run --project src/AxonFlow -- project set-name --slug default --name myproduct
 dotnet run --project src/AxonFlow -- item next --json
 dotnet run --project src/AxonFlow -- item start --ref AF-1 --assignee agent:composer --json
@@ -114,6 +119,7 @@ After global install, replace `dotnet run --project src/AxonFlow --` with `axonf
 
 ## Rules
 
+- **Project partition discipline** — Before writing to AxonFlow, **`project list --json`**. Match the active workspace to an existing **slug** (or **`project add`** a folder-aligned slug). Use **`--project`** on every command when cwd might not be the repo root or when multiple products share one machine DB. Never assume **`default`** is the right target for product work.
 - **Leaf tasks** should be **one-session sized** (one clear outcome).
 - **`client_key`** on planned rows for idempotent retries.
 - Emergent items: **`--discovered-from`** required unless the user explicitly allows **`--no-provenance`**.
