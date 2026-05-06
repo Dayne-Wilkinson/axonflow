@@ -6,7 +6,7 @@ description: >-
   JSON-first queries. Use when planning multi-step work, breaking epics into
   session-sized tasks, tracking live todos, or when the user mentions AxonFlow,
   work graph, backlog, or agent-managed plans.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # AxonFlow agent skill
@@ -19,21 +19,30 @@ disable-model-invocation: true
 
 ## Paths
 
-- **CLI default `--db`** is **`Paths.DefaultDbPath()`** → `~/.axonflow/axonflow.db` (Windows: `%USERPROFILE%\.axonflow\axonflow.db`), so a **global** `axonflow` works from any cwd.
-- **Repo-local graph** — use `--db .axonflow/axonflow.db` (or an absolute path under the repo) when you want a per-project database.
-- A **.NET global tool** install puts `axonflow` on `PATH` under `~/.dotnet/tools` (Windows: `%USERPROFILE%\.dotnet\tools`); the **database is not stored there**—only the executable.
-- **Prefer passing `--db` explicitly** (absolute path, or a path relative to the known repo root) whenever you mean a specific workspace file.
+- **Default `--db`** is **`~/.axonflow/axonflow.db`** (Windows: **`%USERPROFILE%\.axonflow\axonflow.db`**). The first non-dry-run command that needs the DB creates it; you do **not** rely on a separate “repo-local” database for day-to-day use.
+- **`--db <path>`** is only for overrides (tests, migration, advanced cases). Treat the default file as the **single logical store** for a machine; **`--project`** partitions work inside that file.
+- **`--project`** — pass an explicit slug whenever the user names a product/workspace. **If you omit `--project`, AxonFlow derives the slug from the current directory name** (lowercase, hyphenated). In scripts and tests, pin **`--project default`** when targeting the bootstrap project.
+- A **.NET global tool** puts `axonflow` on `PATH` under `~/.dotnet/tools` (Windows: `%USERPROFILE%\.dotnet\tools`); only the binary lives there—not the database.
 
 ## Loop
 
-1. `schema` if debugging version skew; `init` if the DB file is missing.
-2. Initial breakdown: **`item import --json`** (stdin) with `clientKey`, `tempId`, `stream: plan`, and `dependencies`; run **`--dry-run`** first on large payloads.
+1. **`schema`** only when debugging version skew. Do **not** require `init`; the graph is ready after the first real write (or use `init` deliberately if the user wants explicit setup).
+2. Initial breakdown: **`item import --json`** with `clientKey`, `tempId`, `stream: plan`, and `dependencies`; run **`--dry-run`** first on large payloads. (**`--dry-run` + missing DB** fails—run one non-dry command first, or pass an existing `--db`.)
 3. Before coding: **`item next --json`** — read `picked` and `excluded` entries.
-4. Claim work: **`item start --assignee agent:<yourName> --ref AF-n`** (do not skip in multi-agent flows).
-5. During work: new findings → **`item add --stream emergent --discovered-from <activeRef> --client-key ...`**; append **`item note add --ref ... --body "..."`** for decisions and progress.
-6. Park work with **`item defer --until <ISO>`** instead of leaving misleading `ready` rows.
-7. Complete: **`item complete`** (respects children and predecessors unless `--force`).
-8. Session end: **`validate`** (structural + health); optional **`export --format markdown`** only if the user wants a git-visible snapshot.
+4. Claim work: **`item start --assignee agent:<yourName> --ref AF-n`** (never skip in multi-agent flows).
+5. During work: new findings → **`item add --stream emergent --discovered-from <activeRef> --client-key ...`**; append **`item note add`** for decisions/progress.
+6. Park work with **`item defer`** instead of leaving misleading `ready` rows.
+7. Finish: **`item complete`** / **`item cancel`** so AxonFlow mirrors reality.
+8. Session end: **`validate --json`**.
+
+## Status discipline (mandatory)
+
+Keep **status and assignee aligned with what is actually happening** (see **AF-156** in-plan if present):
+
+- **`item start`** before implementation; **`item complete`** / **`item cancel`** when done or dropped; use **`item defer`** when blocked.
+- Never leave the primary ref in `backlog`/`ready` while you are actively implementing.
+- If you switch refs or discover follow-ups, update notes and use **`--discovered-from`** for emergent items.
+- **If AxonFlow is wrong, fix AxonFlow before or as you code—not after the fact.**
 
 ## Entry quality standard (mandatory)
 
@@ -84,30 +93,24 @@ Write notes so the next agent can continue immediately without re-discovery.
 ## CLI cheat sheet
 
 ```text
-dotnet run --project src/AxonFlow -- init --db .axonflow/axonflow.db
-dotnet run --project src/AxonFlow -- item add --db .axonflow/axonflow.db --type task --title "..." --body "..." --json
-dotnet run --project src/AxonFlow -- item update --db .axonflow/axonflow.db --ref AF-1 --body-file path/to/spec.md --json
-dotnet run --project src/AxonFlow -- item list --db .axonflow/axonflow.db --parent AF-12 --json
-dotnet run --project src/AxonFlow -- item list --db .axonflow/axonflow.db --assigned-to agent:composer --body-contains substring --updated-after 2026-05-01T00:00:00Z --json
-dotnet run --project src/AxonFlow -- item import --db .axonflow/axonflow.db --json --dry-run < plan.json
-dotnet run --project src/AxonFlow -- project set-name --db .axonflow/axonflow.db --slug default --name axonflow
-dotnet run --project src/AxonFlow -- item next --db .axonflow/axonflow.db --json
-dotnet run --project src/AxonFlow -- item start --db .axonflow/axonflow.db --ref AF-1 --assignee agent:composer --json
-dotnet run --project src/AxonFlow -- dep add --db .axonflow/axonflow.db --predecessor AF-1 --successor AF-2
-dotnet run --project src/AxonFlow -- validate --db .axonflow/axonflow.db --json
-dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --refresh-seconds 120
-dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --all-projects
-dotnet run --project src/AxonFlow -- dashboard open --db .axonflow/axonflow.db --out dashboard
-dotnet run --project src/AxonFlow -- dashboard watch --db .axonflow/axonflow.db --out dashboard --interval 120
-dotnet run --project src/AxonFlow -- dashboard serve --db .axonflow/axonflow.db --out dashboard --urls http://127.0.0.1:5057 --refresh-seconds 120
-# User-level DB (same file global workflows often use), if .axonflow under cwd does not exist:
-#   Windows:   --db %USERPROFILE%\.axonflow\axonflow.db
-#   macOS/Linux: --db ~/.axonflow/axonflow.db
+# Default global DB; add --project <slug> when pinning (or rely on cwd inference).
+dotnet run --project src/AxonFlow -- item add --type task --title "..." --body "..." --json
+dotnet run --project src/AxonFlow -- item update --ref AF-1 --body-file path/to/spec.md --json
+dotnet run --project src/AxonFlow -- item list --parent AF-12 --json
+dotnet run --project src/AxonFlow -- item list --assigned-to agent:composer --body-contains needle --updated-after 2026-05-01T00:00:00Z --json
+dotnet run --project src/AxonFlow -- item import --json --dry-run < plan.json
+dotnet run --project src/AxonFlow -- project set-name --slug default --name myproduct
+dotnet run --project src/AxonFlow -- item next --json
+dotnet run --project src/AxonFlow -- item start --ref AF-1 --assignee agent:composer --json
+dotnet run --project src/AxonFlow -- dep add --predecessor AF-1 --successor AF-2
+dotnet run --project src/AxonFlow -- validate --json
+dotnet run --project src/AxonFlow -- dashboard
+# Use --json on dashboard to avoid launching a browser.
 .\scripts\install-global.ps1   # or scripts\install-global.cmd if execution policy blocks .ps1
 ./scripts/install-global.sh
 ```
 
-After global install (if you publish a tool), replace `dotnet run --project src/AxonFlow --` with `axonflow`.
+After global install, replace `dotnet run --project src/AxonFlow --` with `axonflow`.
 
 ## Rules
 
@@ -117,6 +120,7 @@ After global install (if you publish a tool), replace `dotnet run --project src/
 - Multi-agent: only **`item start`** items you own; use **`item next --assignee`** filtering.
 - Planned stories must include child tasks before execution; no story-only plans.
 - No one-line item bodies for planned work; include objective, scope, implementation details, validation, and handoff context.
+- Maintain **live status parity** (`start`/`complete`/`cancel`/`defer`) — see Status discipline above.
 
 ## Remote
 

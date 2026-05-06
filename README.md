@@ -11,7 +11,7 @@ It is built for two audiences:
 1. **Coding agents** — stable **`--json`** I/O, **`client_key`** idempotency, bulk **`item import`**, an explainable **`item next`** result (`picked`, `candidates`, `excluded` with reasons), and commands that map cleanly to tool/shell calls.
 2. **Humans** — plain-text and ASCII CLI **`board`** and **`tree`** views, `export` to Markdown or JSON, an optional **HTML dashboard** (board + tree pages; see Phase 2), and ad-hoc **`sqlite3`** / GUI access to the same file.
 
-The database file is **yours** (default `~/.axonflow/axonflow.db`, i.e. `%USERPROFILE%\.axonflow\axonflow.db` on Windows). Override with `--db` for a repo-local file. It is **not** a hosted SaaS: no accounts, no server—only optional future local UI on top of the same schema.
+The database file is **yours** (default **`~/.axonflow/axonflow.db`**, i.e. **`%USERPROFILE%\.axonflow\axonflow.db`** on Windows). The first normal command (**without** **`--dry-run`**) creates that file and migrations if needed. **`--db`** overrides the path only for advanced use; there is intentionally **one logical database** for everyday work—items are partitioned by **`--project`**, not separate DB paths.
 
 ## Why agents use it
 
@@ -20,8 +20,8 @@ LLM conversations **lose detail** (summarization, context limits) and **fork** w
 **Practical habits for agents:**
 
 - Prefer **`--json`** on every call so responses are machine-parseable.
-- Pass an explicit **`--db`** (ideally absolute) so the correct repo’s DB is used regardless of shell cwd.
-- **`init`** once per machine/clone that should own a DB; then **`item import`** (or repeated **`item add --client-key …`**) to materialize plans; **`--dry-run`** before large imports.
+- Pass **`--project <slug>`** when you mean a named workspace slice; **if you omit `--project`, the slug is inferred from your current folder name** (sanitize to lowercase `a-z0-9`-separated segments). Omitting project is fine for exploratory use; CI/tests often pin **`--project default`** explicitly.
+- The DB is created automatically when you run a writer (or **`project list`** / **`dashboard`**) once without **`--dry-run`**; **`init`** remains as an explicit noop-style setup if you want it. Prefer **`item import`** (or **`item add --client-key …`**) with **`--dry-run`** before large payloads.
 - Use **`item next`** before picking work; use **`item start --assignee …`** when multiple agents (or human + agent) share a backlog.
 - After meaningful progress: **`item note add`** on the active item; for surprises: **`item add --stream emergent --discovered-from <ref>`**.
 - End of session (or before a handoff): **`validate`**; optional **`export --format markdown`** if the team wants a git-visible snapshot.
@@ -31,12 +31,11 @@ The full agent loop and copy-paste examples live in the **Cursor skill** (see be
 ## Quick start
 
 ```bash
-dotnet run --project src/AxonFlow -- init
-dotnet run --project src/AxonFlow -- item add --type task --title "First task" --json
-dotnet run --project src/AxonFlow -- item next --json
+dotnet run --project src/AxonFlow -- item add --type task --title "First task" --project default --json
+dotnet run --project src/AxonFlow -- item next --project default --json
 ```
 
-Default database: `~/.axonflow/axonflow.db` (override with `--db`, e.g. `.axonflow/axonflow.db` in a repo).
+Default database: **`~/.axonflow/axonflow.db`**. Overrides: **`--db <path>`** only when needed.
 
 ### Use the `axonflow` command (global tool)
 
@@ -44,12 +43,12 @@ Until you install the tool, run via **`dotnet run --project src/AxonFlow --`** (
 
 ```bash
 dotnet pack src/AxonFlow/AxonFlow.csproj -c Release -o ./artifacts
-dotnet tool install --global AxonFlow --source ./artifacts --version 0.1.8
+dotnet tool install --global AxonFlow --source ./artifacts --version 0.2.0
 ```
 
 `--source ./artifacts` **replaces** every configured feed for that command, so your user or Visual Studio [`NuGet.Config`](https://learn.microsoft.com/nuget/consume-packages/configuring-nuget-behavior) (including misconfigured private feeds) is not consulted. If you prefer to keep merging all sources, use `--add-source ./artifacts` and add **`--ignore-failed-sources`** when a corporate feed fails.
 
-Then **`axonflow`** works from any directory (for example **`axonflow dashboard open`**). Upgrade later with **`dotnet tool update --global AxonFlow --source ./artifacts`** after packing a newer version, or install from NuGet if the package is published.
+Then **`axonflow`** works from any directory (for example **`axonflow dashboard`**). Upgrade later with **`dotnet tool update --global AxonFlow --source ./artifacts`** after packing a newer version, or install from NuGet if the package is published.
 
 **Visual Studio / corporate feeds:** Global tools are installed with **`dotnet tool`**, not the VS “Manage NuGet Packages” UI. If restore or pack inside this repo still hits a bad private feed, the repo includes a root **[`NuGet.Config`](NuGet.Config)** that limits package sources to **nuget.org** for this tree only (delete or edit that file if your org requires a different mirror).
 
@@ -76,26 +75,26 @@ chmod +x scripts/install-global.sh
 
 Ensure **`%USERPROFILE%\.dotnet\tools`** (Windows) or **`~/.dotnet/tools`** (macOS/Linux) is on your **`PATH`** (the .NET SDK installer usually adds it).
 
-`dashboard` still needs a subcommand, for example **`axonflow dashboard open`** or **`axonflow dashboard emit`**. Run **`axonflow dashboard --help`** for the list.
+Use **`axonflow dashboard`** (**no subcommands**) to serve the dashboard on loopback (**`http://127.0.0.1:5057`**); the UI refreshes from **`/api/snapshot`** every **120 seconds** and includes an **all-projects** picker. **`--json`** suppresses opening a browser while the server runs.
 
 ### Global options (most commands)
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--db` | `~/.axonflow/axonflow.db` | SQLite file path |
-| `--project` | `default` | Project slug |
+| `--project` | *inferred from cwd folder name* | Project slug; pass explicitly when pinning (e.g. **`default`** in scripts) |
 | `--json` | off | Machine-readable stdout |
 | `--dry-run` | off | Validate / plan writes without committing (where supported) |
 
 ## Commands (overview)
 
 - `schema` — CLI and embedded DB schema version
-- `init` — create DB, apply migration, ensure default project
+- `init` — explicitly create DB, apply migrations, ensure default **`default`** project (optional; ordinary commands bootstrap for you)
 - `project add|list|set-name` — **`set-name`** updates the display **`name`** for a **`--slug`** (slug and `AF-*` refs stay the same; use when the default project should read e.g. **axonflow** in the dashboard instead of **Default**)
 - `item add|update|show|list|import|start|next|complete|cancel|reopen|note add|defer` — **`list`** supports **`--assigned-to`**, **`--body-contains`**, **`--updated-after`** (ISO-8601, UTC), plus **`--status`**, **`--type`**, **`--parent`**, **`--stream`**, **`--title-contains`**, **`--ref-prefix`**, **`--sort`**, **`--limit`**; **`update`** accepts **`--ref`** or **`--id`** and can set **`--body`**, **`--body-file`**, or **`--clear-body`**
 - `dep add|remove`
 - `tree`, `board`, `validate`, `export`
-- `dashboard emit`, `dashboard open`, `dashboard watch` — static read-only HTML: **`index.html`** (board) + **`tree.html`** (hierarchy table) + **`mindmap.html`** redirect stub → `tree.html` (see Phase 2); **`dashboard serve`** — loopback Kestrel host: writes fetch-based **`index.html`** and **`tree.html`**, serves the same stub, static files, and read-only **`GET /api/snapshot`** and **`GET /api/item`**; **`--open`** launches the default browser after emit (ignored with **`--json`**); **`--all-projects`** embeds or fetches all DB projects (schema v2) with an in-page picker
+- `dashboard` — loopback (**`127.0.0.1:5057`**) read-only Kanban **+** hierarchy pages; **`GET /api/snapshot`** and **`GET /api/item`** live data; caches bootstrap HTML under **`~/.axonflow/dashboard-cache`**; **`--project`** selects the dashboard’s initial picker focus (all projects are always selectable)
 
 Use `--help` on the root or any command for details.
 
@@ -152,48 +151,14 @@ dotnet test AxonFlow.sln
 
 ## Phase 2 — HTML dashboard (read-only)
 
-The CLI writes a **small static site** under **`--out`**: **`index.html`** (Kanban board) and **`tree.html`** (tree table: depth-indented refs, type, status, title, dependency touch counts). Both embed the same JSON **snapshot** of the current project (all work items plus **finish-start** dependencies). A **`<meta http-equiv="refresh">`** on those pages reloads every **`--refresh-seconds`** so a long-lived **`file://`** tab picks up a newer file from disk. **`mindmap.html`** is a **redirect stub** to **`tree.html`** only (legacy path); open **`tree.html`** for the hierarchy view.
+**`axonflow dashboard`** starts a **loopback-only** Kestrel host (default **`http://127.0.0.1:5057`**) and serves:
 
-With **`dashboard emit --json`**, stdout includes paths for the board file, **`treePath`**, and the legacy stub (**`mindmapLegacyStubPath`**).
+- **`index.html`** — Kanban board + project picker (always **all projects** in the DB).
+- **`tree.html`** — hierarchy view with the same live data.
+- **`mindmap.html`** — tiny redirect stub to **`tree.html`** for old bookmarks.
 
-### Live data: `dashboard serve` (loopback only)
-
-For a tab that reads **current DB state over HTTP** (no `file://` snapshot bake), run **`dashboard serve`**. It writes bootstrap **`index.html`** and **`tree.html`** (and the **`mindmap.html`** stub) under **`--out`**, starts **Kestrel** on **`--urls`** (default **`http://127.0.0.1:5057`** — must stay on loopback), serves static files from that folder, and exposes:
-
-- **`GET /api/snapshot?project=<slug>`** — same JSON shape as the embedded snapshot (add **`allProjects=1`** for schema v2 multi-project).
-- **`GET /api/item?ref=<REF>&project=<slug>`** — same envelope as **`axonflow item show --json`** (`item`, `blockingPredecessors`, `blockedBy`).
-
-The page **polls** `/api/snapshot` on the **`--refresh-seconds`** cadence (same flag as emit’s meta refresh). Use **`Ctrl+C`** to stop the process. **`--open`** launches the dashboard URL in your default browser (still ignored with **`--json`**).
+Bootstrap assets are written under **`%USERPROFILE%\.axonflow\dashboard-cache`** (or **`~/.axonflow/dashboard-cache`**) so you do not manage an output folder. The browser **polls** **`GET /api/snapshot?allProjects=1`** every **120 seconds**; item detail uses **`GET /api/item`**. Stop with **`Ctrl+C`**. With **`--json`**, the default browser is not opened (error output still respects JSON when applicable).
 
 ```bash
-dotnet run --project src/AxonFlow -- dashboard serve --db .axonflow/axonflow.db --out dashboard --urls http://127.0.0.1:5057 --refresh-seconds 120 --open
-```
-
-To refresh the snapshot **without** running a separate HTTP server, use a second terminal:
-
-```bash
-dotnet run --project src/AxonFlow -- dashboard watch --db .axonflow/axonflow.db --out dashboard --interval 120 --refresh-seconds 120
-```
-
-That loop rewrites **`index.html`**, **`tree.html`**, and the **`mindmap.html`** stub on a cadence; the browser’s periodic full reload reads the updated files. Use **`--quiet`** to suppress repeated “Wrote …” lines.
-
-One-shot emit:
-
-```bash
-dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --refresh-seconds 180
-```
-
-Open **`index.html`** in the default browser after a successful write (same as **`emit`** with **`--open`**):
-
-```bash
-dotnet run --project src/AxonFlow -- dashboard open --db .axonflow/axonflow.db --out dashboard
-dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --open
-```
-
-With **`dashboard watch`**, use **`--open`** to open the browser once on the first emit only. **`--open`** is ignored when **`--json`** is set so scripts do not launch a browser.
-
-The **board** UI shows **columns by status** (backlog → cancelled), **open counts**, **work item type** badges (epic / feature / story / task / bug / chore) plus **plan vs emergent** and **assignee** badges, and a **detail** panel: under **`dashboard serve`**, selecting a card loads **`GET /api/item`** and shows the full JSON envelope (parity with **`axonflow item show --json`**); embedded **`emit`** mode shows a JSON view built from the snapshot item plus predecessor edges. The **tree** page uses the same snapshot and detail behavior, with cross-links to the board (`index.html`). Use **`--all-projects`** to embed or fetch **every** project in the DB (**schema v2**) and show an in-page **project** picker (initial selection follows global **`--project`**). Generated files under **`dashboard/`** (for example `index.html`, `tree.html`) are **gitignored**; machine-local plans live under **`plans/`** for **`item import --file`**.
-
-```bash
-dotnet run --project src/AxonFlow -- dashboard emit --db .axonflow/axonflow.db --out dashboard --all-projects --open
+dotnet run --project src/AxonFlow -- dashboard
 ```

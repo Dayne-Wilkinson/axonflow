@@ -294,26 +294,13 @@ internal static class HandlersItem
 
     private static bool OpenDb(InvocationContext ctx, out Store store, out SqliteConnection c, out string? projectId)
     {
-        store = null!;
-        c = null!;
-        projectId = null;
-        var dbPath = Path.GetFullPath(ctx.ParseResult.GetValueForOption(CliRoot.DbOption)!);
-        if (!File.Exists(dbPath))
+        if (!CliRoot.TryOpenWorkload(ctx, out store!, out c!, out var pid))
         {
-            Err(ctx, "not_found", "Database not found; run init first.");
+            projectId = null;
             return false;
         }
-        store = new Store($"Data Source={dbPath};Mode=ReadWrite");
-        c = store.Open();
-        projectId = CliRoot.GetProjectId(ctx, store, c);
-        if (projectId is null)
-        {
-            Err(ctx, "not_found", "Project not found for slug.");
-            c.Dispose();
-            store = null!;
-            c = null!;
-            return false;
-        }
+
+        projectId = pid;
         return true;
     }
 

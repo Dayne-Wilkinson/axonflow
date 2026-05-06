@@ -26,7 +26,7 @@ public class DashboardServeTests
             Assert.Equal(0, await parser.InvokeAsync(new[] { "init", "--db", db }));
             Assert.Equal(0, await parser.InvokeAsync(new[]
             {
-                "item", "add", "--db", db, "--type", "task", "--title", "HTTP integration item", "--status", "ready", "--json"
+                "item", "add", "--db", db, "--project", "default", "--type", "task", "--title", "HTTP integration item", "--status", "ready", "--json"
             }));
 
             Directory.CreateDirectory(outDir);

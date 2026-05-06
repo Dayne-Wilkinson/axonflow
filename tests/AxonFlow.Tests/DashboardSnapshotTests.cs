@@ -18,7 +18,7 @@ public class DashboardSnapshotTests
             Assert.Equal(0, CreateParser().Invoke(new[] { "init", "--db", db }));
             Assert.Equal(0, CreateParser().Invoke(new[]
             {
-                "item", "add", "--db", db, "--type", "epic", "--title", "E", "--status", "backlog", "--json"
+                "item", "add", "--db", db, "--project", "default", "--type", "epic", "--title", "E", "--status", "backlog", "--json"
             }));
 
             var store = new Store($"Data Source={db};Mode=ReadOnly");
