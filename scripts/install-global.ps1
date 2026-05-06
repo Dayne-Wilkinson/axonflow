@@ -31,11 +31,11 @@ dotnet pack $csproj -c Release -o $artifacts
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $pkg = "AxonFlow"
-Write-Host "Updating or installing global tool $pkg $version (from $artifacts)"
-dotnet tool update --global $pkg --add-source $artifacts --version $version
+Write-Host "Updating or installing global tool $pkg $version (from $artifacts only; ignores machine/private NuGet feeds)."
+dotnet tool update --global $pkg --source $artifacts --version $version
 if ($LASTEXITCODE -ne 0) {
   Write-Host "dotnet tool update exited $LASTEXITCODE; trying install (first-time or different feed)." -ForegroundColor DarkYellow
-  dotnet tool install --global $pkg --add-source $artifacts --version $version
+  dotnet tool install --global $pkg --source $artifacts --version $version
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 

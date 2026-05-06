@@ -25,10 +25,10 @@ echo "Packing AxonFlow $VERSION -> $ARTIFACTS"
 dotnet pack "$CSPROJ" -c Release -o "$ARTIFACTS"
 
 PKG="AxonFlow"
-echo "Updating or installing global tool $PKG $VERSION (from $ARTIFACTS)"
-if ! dotnet tool update --global "$PKG" --add-source "$ARTIFACTS" --version "$VERSION"; then
+echo "Updating or installing global tool $PKG $VERSION (artifacts folder only; ignores machine/private NuGet feeds)."
+if ! dotnet tool update --global "$PKG" --source "$ARTIFACTS" --version "$VERSION"; then
   echo "dotnet tool update failed; trying install (first-time or different feed)." >&2
-  dotnet tool install --global "$PKG" --add-source "$ARTIFACTS" --version "$VERSION"
+  dotnet tool install --global "$PKG" --source "$ARTIFACTS" --version "$VERSION"
 fi
 
 echo "Done. Ensure ~/.dotnet/tools is on PATH, then run: axonflow --help"

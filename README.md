@@ -4,7 +4,7 @@
 
 ## What it is
 
-AxonFlow is a **small command-line app** (cross-platform **.NET 9**) that keeps your work in a **single SQLite database** as a **live graph**: epics, features, stories, tasks, bugs, and chores sit in one hierarchy; **dependencies** express “finish A before B”; **blockers** capture who or what is in the way; **emergent** items record work discovered mid-flight with **provenance** (where the idea came from); **notes** append a running log without rewriting specs in chat.
+AxonFlow is a **small command-line app** (cross-platform **.NET 8**) that keeps your work in a **single SQLite database** as a **live graph**: epics, features, stories, tasks, bugs, and chores sit in one hierarchy; **dependencies** express “finish A before B”; **blockers** capture who or what is in the way; **emergent** items record work discovered mid-flight with **provenance** (where the idea came from); **notes** append a running log without rewriting specs in chat.
 
 It is built for two audiences:
 
@@ -44,10 +44,14 @@ Until you install the tool, run via **`dotnet run --project src/AxonFlow --`** (
 
 ```bash
 dotnet pack src/AxonFlow/AxonFlow.csproj -c Release -o ./artifacts
-dotnet tool install --global AxonFlow --add-source ./artifacts --version 0.1.7
+dotnet tool install --global AxonFlow --source ./artifacts --version 0.1.8
 ```
 
-Then **`axonflow`** works from any directory (for example **`axonflow dashboard open`**). Upgrade later with **`dotnet tool update --global AxonFlow --add-source ./artifacts`** after packing a newer version, or install from NuGet if the package is published.
+`--source ./artifacts` **replaces** every configured feed for that command, so your user or Visual Studio [`NuGet.Config`](https://learn.microsoft.com/nuget/consume-packages/configuring-nuget-behavior) (including misconfigured private feeds) is not consulted. If you prefer to keep merging all sources, use `--add-source ./artifacts` and add **`--ignore-failed-sources`** when a corporate feed fails.
+
+Then **`axonflow`** works from any directory (for example **`axonflow dashboard open`**). Upgrade later with **`dotnet tool update --global AxonFlow --source ./artifacts`** after packing a newer version, or install from NuGet if the package is published.
+
+**Visual Studio / corporate feeds:** Global tools are installed with **`dotnet tool`**, not the VS “Manage NuGet Packages” UI. If restore or pack inside this repo still hits a bad private feed, the repo includes a root **[`NuGet.Config`](NuGet.Config)** that limits package sources to **nuget.org** for this tree only (delete or edit that file if your org requires a different mirror).
 
 **Quick setup from a clone** (packs into `./artifacts` and installs or updates the global tool; reads **`Version`** from [`src/AxonFlow/AxonFlow.csproj`](src/AxonFlow/AxonFlow.csproj)):
 
