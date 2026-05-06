@@ -32,6 +32,9 @@ public class DashboardStaticHtmlTests
             Assert.Contains("id=\"tree-body\"", tree);
             Assert.Contains("role=\"tree\"", tree);
             Assert.Contains("href=\"index.html\"", tree);
+            Assert.Contains("af-chip-status", tree);
+            Assert.Contains("statusPresentation", tree);
+            Assert.Contains("af-st-done", tree);
 
             var stub = await File.ReadAllTextAsync(Path.Combine(outDir, "mindmap.html"));
             Assert.Contains("tree.html", stub);
