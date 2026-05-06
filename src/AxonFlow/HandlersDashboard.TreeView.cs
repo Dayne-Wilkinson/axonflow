@@ -79,8 +79,50 @@ __META_REFRESH__
     tr.tree-row:focus { outline: 2px solid var(--plan); outline-offset: -2px; }
     tr.tree-row.selected { background: #1c2430; }
     td.refcell { font-weight: 600; color: var(--plan); white-space: nowrap; }
+    td.cell-type, td.cell-status { white-space: nowrap; }
     td.dep { color: var(--muted); font-size: 0.76rem; white-space: nowrap; }
-    .type-legend { font-size: 0.72rem; color: var(--muted); margin-top: 0.35rem; }
+    #tree-table .af-chip {
+      display: inline-block; font-size: 0.68rem; font-weight: 600; line-height: 1.25;
+      padding: 0.14rem 0.45rem; border-radius: 999px; border: 1px solid transparent;
+      max-width: 12rem; overflow: hidden; text-overflow: ellipsis; vertical-align: middle;
+    }
+    #tree-table .af-chip-type {
+      border-radius: 4px; padding-left: 0.35rem; text-transform: lowercase; color: var(--text);
+      background: rgba(45, 58, 77, 0.55);
+    }
+    #tree-table .af-chip-type.af-type-epic { border-left: 3px solid #f778ba; }
+    #tree-table .af-chip-type.af-type-feature { border-left: 3px solid #79c0ff; }
+    #tree-table .af-chip-type.af-type-story { border-left: 3px solid #56d364; }
+    #tree-table .af-chip-type.af-type-task { border-left: 3px solid #d2a8ff; }
+    #tree-table .af-chip-type.af-type-bug { border-left: 3px solid #f85149; }
+    #tree-table .af-chip-type.af-type-chore { border-left: 3px solid #8b949e; }
+    #tree-table .af-chip-type.af-type-spike { border-left: 3px solid #ffa657; }
+    #tree-table .af-chip-type.af-type-other { border-left: 3px solid var(--muted); color: var(--muted); }
+    #tree-table .af-chip-status { text-transform: none; }
+    #tree-table .af-chip-status.af-st-backlog {
+      color: var(--muted); border-color: #3d4f66; background: rgba(139, 156, 179, 0.1);
+    }
+    #tree-table .af-chip-status.af-st-ready {
+      color: #79c0ff; border-color: rgba(61, 139, 253, 0.55); background: rgba(61, 139, 253, 0.12);
+    }
+    #tree-table .af-chip-status.af-st-in_progress {
+      color: var(--text); border-color: var(--plan); background: rgba(61, 139, 253, 0.2);
+    }
+    #tree-table .af-chip-status.af-st-blocked {
+      color: #ffa198; border-color: rgba(248, 81, 73, 0.65); background: rgba(248, 81, 73, 0.12);
+    }
+    #tree-table .af-chip-status.af-st-done {
+      color: #6ef7a4; border-color: rgba(63, 185, 80, 0.55); background: rgba(63, 185, 80, 0.12);
+    }
+    #tree-table .af-chip-status.af-st-cancelled {
+      color: #8b949e; border-style: dashed; border-color: #6e7681; background: rgba(110, 118, 129, 0.1);
+      text-decoration: line-through; text-decoration-thickness: 1px;
+    }
+    #tree-table .af-chip-status.af-st-unknown {
+      color: var(--muted); border-color: var(--border); background: rgba(45, 58, 77, 0.35); font-weight: 500;
+    }
+    #tree-table .af-chip-status.af-snooze-flag { box-shadow: 0 0 0 1px rgba(163, 113, 247, 0.55); }
+    .type-legend { font-size: 0.72rem; color: var(--muted); margin-top: 0.35rem; max-width: 52rem; line-height: 1.35; }
     .detail-overlay { position: fixed; inset: 0; z-index: 1000; }
     .detail-overlay[hidden] { display: none !important; }
     .detail-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }
@@ -114,7 +156,11 @@ __META_REFRESH__
       <h1>Tree view</h1>
       <nav class="nav-links" aria-label="Page navigation"><a href="index.html">Board</a></nav>
       <div class="meta" id="hdr-meta"></div>
-      <div class="type-legend" id="type-legend" hidden>Columns show ref, type, status, title; dependency count is secondary.</div>
+      <div class="type-legend" id="type-legend">
+        Types use the left stripe colors (same idea as the board). Status chips:
+        <strong>Backlog</strong> · <strong>Ready</strong> · <strong>In progress</strong> · <strong>Blocked</strong> ·
+        <strong>Done</strong> (closed) · <strong>Cancelled</strong> (dashed, struck). Snoozed rows add a violet outline; unknown statuses use a neutral chip.
+      </div>
       <div class="project-row" id="project-row">
         <label for="project-select">Project</label>
         <select id="project-select" aria-label="Select project"></select>
@@ -153,7 +199,6 @@ __FOOTER__
   </script>
   <script>
 (function () {
-  const typeLegend = document.getElementById('type-legend');
   const el = document.getElementById('af-snapshot');
   let bootstrapData;
   try {
@@ -173,7 +218,6 @@ __FOOTER__
     if (!res.ok) throw new Error('snapshot HTTP ' + res.status);
     return res.json();
   }
-  if (served) typeLegend.hidden = false;
 
   const counts = document.getElementById('counts');
   const projectRow = document.getElementById('project-row');
@@ -231,6 +275,63 @@ __FOOTER__
     const d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
+  }
+
+  function normToken(s) {
+    return String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, '_');
+  }
+
+  /** Maps ItemDto.status + snoozedUntil to chip label & CSS suffix (parity with board column names). */
+  function statusPresentation(it) {
+    const raw = normToken(it.status);
+    let label;
+    let cls;
+    let bucket = 'open';
+    if (raw === 'done') {
+      label = 'Done'; cls = 'af-st-done'; bucket = 'terminal';
+    } else if (raw === 'cancelled') {
+      label = 'Cancelled'; cls = 'af-st-cancelled'; bucket = 'terminal';
+    } else if (raw === 'blocked') {
+      label = 'Blocked'; cls = 'af-st-blocked'; bucket = 'blocked';
+    } else if (raw === 'in_progress') {
+      label = 'In progress'; cls = 'af-st-in_progress';
+    } else if (raw === 'ready') {
+      label = 'Ready'; cls = 'af-st-ready';
+    } else if (raw === 'backlog') {
+      label = 'Backlog'; cls = 'af-st-backlog';
+    } else if (raw) {
+      cls = 'af-st-unknown';
+      label = String(it.status).replace(/_/g, ' ');
+    } else {
+      cls = 'af-st-unknown';
+      label = 'Unknown';
+    }
+    const terminal = bucket === 'terminal';
+    let snooze = !!(it.snoozedUntil && !terminal);
+    let extra = '';
+    if (snooze) extra = ' · snoozed';
+    return {
+      label: label + extra,
+      className: 'af-chip af-chip-status ' + cls + (snooze ? ' af-snooze-flag' : ''),
+      bucket: bucket
+    };
+  }
+
+  function typePresentation(it) {
+    const tp = normToken(it.type) || 'task';
+    const map = {
+      epic: 'af-type-epic', feature: 'af-type-feature', story: 'af-type-story', task: 'af-type-task',
+      bug: 'af-type-bug', chore: 'af-type-chore', spike: 'af-type-spike'
+    };
+    const cls = map[tp] || 'af-type-other';
+    const label = (it.type || 'task').toLowerCase();
+    return { label: label, className: 'af-chip af-chip-type ' + cls };
+  }
+
+  function truncateAria(s, n) {
+    const t = String(s == null ? '' : s);
+    if (t.length <= n) return t;
+    return t.slice(0, Math.max(0, n - 1)) + '…';
   }
 
   function pickBundle() {
@@ -375,10 +476,24 @@ __FOOTER__
       const pad = (row.depth * 18) + 'px';
       const depLabel = row.depN ? (String(row.depN) + ' link' + (row.depN === 1 ? '' : 's')) : '';
       const title = (it.title || '').length > 120 ? (it.title || '').slice(0, 118) + '…' : (it.title || '');
+      const st = statusPresentation(it);
+      const ty = typePresentation(it);
+      const ariaBits = [
+        it.ref || '',
+        'type ' + ty.label,
+        'status ' + st.label,
+        truncateAria(it.title || '', 100)
+      ];
+      const ariaRow = ariaBits.filter(Boolean).join(', ');
+      tr.setAttribute('aria-label', ariaRow);
       tr.innerHTML =
         '<td class="refcell" style="padding-left:calc(0.65rem + ' + pad + ')">' + esc(it.ref) + '</td>' +
-        '<td>' + esc((it.type || '').toLowerCase()) + '</td>' +
-        '<td>' + esc((it.status || '').replace('_', ' ')) + '</td>' +
+        '<td class="cell-type">' +
+          '<span class="' + ty.className + '" aria-label="Type: ' + esc(ty.label) + '">' + esc(ty.label) + '</span>' +
+        '</td>' +
+        '<td class="cell-status">' +
+          '<span class="' + st.className + '" aria-label="Status: ' + esc(st.label) + '">' + esc(st.label) + '</span>' +
+        '</td>' +
         '<td>' + esc(title) + '</td>' +
         '<td class="dep">' + esc(depLabel) + '</td>';
       tr.addEventListener('click', function (ev) {
