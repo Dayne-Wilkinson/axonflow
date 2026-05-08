@@ -2,11 +2,25 @@
 
 **Repository:** [github.com/Dayne-Wilkinson/axonflow](https://github.com/Dayne-Wilkinson/axonflow)
 
-AxonFlow is a **.NET 8** command-line tool that stores your work in **one SQLite database** as a graph: epics, features, stories, tasks, bugs, and chores in a hierarchy; **dependencies** (“finish A before B”); **blockers**; **emergent** work with **provenance**; and **notes** on items.
+AxonFlow is a **.NET 8** command-line tool that keeps a **single plan of record** for work: a **SQLite database** that models your backlog as a **graph**, not a flat list. Work items have types (**epic**, **feature**, **story**, **task**, **bug**, **chore**) and sit in a **parent/child hierarchy**. **Dependencies** express finish-to-start order (“do A before B”). **Blockers** record what is stopping progress. **Emergent** items capture work discovered mid-flight, with **provenance** so you know where the idea came from. **Notes** append a dated log on each item without rewriting specs inside chat transcripts.
 
-It is aimed at **coding agents** (stable **`--json`** output, **`client_key`** idempotency, **`item import`**, explainable **`item next`**) and **humans** (terminal **`board`** / **`tree`**, **`export`**, optional **browser dashboard**).
+You slice the database by **project** (`--project` / slug). Humans get readable **`board`** and **`tree`** views, **`export`** to JSON or Markdown, and an optional **browser dashboard**. Agents get a stable **`--json`** contract, **`client_key`** for idempotent creates, **`item import`** for bulk loads, and explainable **`item next`** output (what was picked, what was skipped, and why).
 
-Your database file lives under your profile by default (**`%USERPROFILE%\.axonflow\axonflow.db`** on Windows, **`~/.axonflow/axonflow.db`** elsewhere). Items are separated by **project slug** (`--project`), not by using multiple database files for day-to-day work.
+### Why LLMs and coding agents benefit
+
+Long chats **lose detail** (summarization, context limits) and **fork** when you run parallel sessions or switch models. Spreadsheets and ad hoc Markdown notes drift out of sync with what the code actually needs next. AxonFlow gives agents something closer to how they already interact with code: **a small CLI with predictable stdout**, so “what is blocked?”, “what should we pick next?”, and “what did we decide for AF-12?” stay **queryable and durable** instead of buried in scrollback.
+
+More concretely:
+
+- **Structured state** — Status, type, parent, dependencies, and notes live in one schema agents can **list**, **filter**, and **update** without inventing their own taxonomy each session.
+- **Machine-readable I/O** — **`--json`** responses are easy to parse in scripts and agent loops; fewer brittle regexes over prose.
+- **Repeatable workflows** — **`item next`**, **`item start`**, **`item note add`**, **`validate`** map to discrete tool calls with clear success and failure modes.
+- **Idempotency and bulk work** — **`client_key`** avoids duplicate items when a step retries; **`item import`** applies large plan payloads safely (often with **`--dry-run`** first).
+- **Explainability** — **`item next`** can return **`picked`**, **`candidates`**, and **`excluded`** with reasons, so an agent (or you) can audit why something was or was not chosen.
+
+None of this replaces code review or judgment; it gives **shared ground truth** for planning and execution across turns, branches, and machines.
+
+Your database file lives under your profile by default (**`%USERPROFILE%\.axonflow\axonflow.db`** on Windows, **`~/.axonflow/axonflow.db`** elsewhere). Items are separated by **project slug**, not by maintaining separate database files for everyday work.
 
 ---
 
@@ -30,7 +44,7 @@ dotnet pack src/AxonFlow/AxonFlow.csproj -c Release -o ./artifacts
 dotnet tool install --global AxonFlow --source ./artifacts --version 0.2.0
 ```
 
-Or run **`scripts/install-global.ps1`** (Windows) / **`scripts/install-global.sh`** (Unix). Ensure **`%USERPROFILE%\.dotnet\tools`** (Windows) or **`~/.dotnet/tools`** is on your **`PATH`**.
+Or run **`scripts\install-global.cmd`** from the repo root (Windows; avoids PowerShell execution-policy prompts by invoking the installer with **`Bypass`**) / **`scripts/install-global.sh`** (Unix). Ensure **`%USERPROFILE%\.dotnet\tools`** (Windows) or **`~/.dotnet/tools`** is on your **`PATH`**.
 
 ---
 
@@ -77,15 +91,15 @@ Static bootstrap files are written under **`%USERPROFILE%\.axonflow\dashboard-ca
 
 ### Board (Kanban)
 
-![AxonFlow dashboard — board view with columns by status, type legend, project picker, and status counts](./docs/images/dashboard/board-kanban.png)
+![AxonFlow dashboard: board (Kanban) view](./assets/dashboard/board-kanban.png)
 
 ### Tree view
 
-![AxonFlow dashboard — hierarchical tree table with ref, type, status, and title](./docs/images/dashboard/tree-table.png)
+![AxonFlow dashboard: tree table](./assets/dashboard/tree-table.png)
 
 ### Item detail (JSON)
 
-![AxonFlow dashboard — item detail overlay showing JSON for a task](./docs/images/dashboard/item-detail-json.png)
+![AxonFlow dashboard: item detail JSON](./assets/dashboard/item-detail-json.png)
 
 ---
 
