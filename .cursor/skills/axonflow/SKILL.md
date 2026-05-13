@@ -48,6 +48,14 @@ Keep **status and assignee aligned with what is actually happening** (see **AF-1
 - If you switch refs or discover follow-ups, update notes and use **`--discovered-from`** for emergent items.
 - **If AxonFlow is wrong, fix AxonFlow before or as you code—not after the fact.**
 
+### Lifecycle command semantics (current)
+
+- **`item start`** moves an item to `in_progress` and now validates unsatisfied predecessors unless `--force` is used.
+- **`item defer --until ...`** marks the item `blocked` and applies snooze metadata; this is the preferred way to represent parked/blocked work.
+- **`item defer --clear`** clears snooze and restores `ready` for non-active work (or keeps `in_progress` if the item is actively worked).
+- **`item complete`** now expects `in_progress` unless `--force` is provided; this prevents silent `backlog -> done` jumps in normal flows.
+- Automation that previously completed directly from `backlog` should either call `item start` first or use `item complete --force` intentionally.
+
 ## Entry quality standard (mandatory)
 
 - Every item body must be **technically detailed**. Do not create one-line bodies for stories, tasks, bugs, chores, or spikes.
@@ -110,6 +118,7 @@ dotnet run --project src/AxonFlow -- item start --ref AF-1 --assignee agent:comp
 dotnet run --project src/AxonFlow -- dep add --predecessor AF-1 --successor AF-2
 dotnet run --project src/AxonFlow -- validate --json
 dotnet run --project src/AxonFlow -- dashboard
+dotnet run --project src/AxonFlow -- dashboard --poll-seconds 10
 # Use --json on dashboard to avoid launching a browser.
 .\scripts\install-global.ps1   # or scripts\install-global.cmd if execution policy blocks .ps1
 ./scripts/install-global.sh
@@ -127,6 +136,7 @@ After global install, replace `dotnet run --project src/AxonFlow --` with `axonf
 - Planned stories must include child tasks before execution; no story-only plans.
 - No one-line item bodies for planned work; include objective, scope, implementation details, validation, and handoff context.
 - Maintain **live status parity** (`start`/`complete`/`cancel`/`defer`) — see Status discipline above.
+- When using the dashboard for live tracking, prefer explicit **`dashboard --poll-seconds <n>`** to match the team's desired freshness and host load.
 
 ## Remote
 

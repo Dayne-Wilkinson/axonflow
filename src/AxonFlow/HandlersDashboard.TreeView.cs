@@ -283,7 +283,10 @@ __FOOTER__
 
   /** Maps ItemDto.status + snoozedUntil to chip label & CSS suffix (parity with board column names). */
   function statusPresentation(it) {
-    const raw = normToken(it.status);
+    let raw = normToken(it.status);
+    if (raw === 'active' || raw === 'inprogress' || raw === 'wip') raw = 'in_progress';
+    else if (raw === 'complete' || raw === 'completed') raw = 'done';
+    else if (raw === 'cancel' || raw === 'canceled') raw = 'cancelled';
     let label;
     let cls;
     let bucket = 'open';

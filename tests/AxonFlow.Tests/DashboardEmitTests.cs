@@ -26,6 +26,10 @@ public class DashboardStaticHtmlTests
             Assert.Contains("id=\"detail-overlay\"", index);
             Assert.Contains("href=\"tree.html\"", index);
             Assert.Contains("Tree view</a>", index);
+            Assert.Contains("id=\"refresh-meta\"", index);
+            Assert.Contains("id=\"status-warning\"", index);
+            Assert.Contains("function laneForStatus", index);
+            Assert.Contains("unknown <strong>", index);
 
             var tree = await File.ReadAllTextAsync(Path.Combine(outDir, "tree.html"));
             Assert.Contains("id=\"af-snapshot\"", tree);

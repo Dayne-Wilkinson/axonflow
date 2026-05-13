@@ -222,13 +222,16 @@ internal static class HandlersItem
         var sid = new Option<string?>("--id");
         var sref = new Option<string?>("--ref");
         var sassign = new Option<string>("--assignee") { IsRequired = true };
+        var sforce = new Option<bool>("--force", () => false);
         start.AddOption(sid);
         start.AddOption(sref);
         start.AddOption(sassign);
+        start.AddOption(sforce);
         start.SetHandler(ctx => ItemStart(
             ctx.ParseResult.GetValueForOption(sid),
             ctx.ParseResult.GetValueForOption(sref),
             ctx.ParseResult.GetValueForOption(sassign)!,
+            ctx.ParseResult.GetValueForOption(sforce),
             ctx));
 
         var next = new Command("next", "Pick next actionable item");
@@ -601,10 +604,21 @@ internal static class HandlersItem
         if (!OpenDb(ctx, out var store, out var c, out var pid) || pid is null) return;
         var row = Resolve(store, c, pid, id, @ref);
         if (row is null) { Err(ctx, "not_found", "Item not found"); return; }
+        if (row.Status is "done" or "cancelled")
+        {
+            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", "cannot defer terminal items");
+            else Console.Error.WriteLine("cannot defer terminal items");
+            ctx.ExitCode = 2;
+            return;
+        }
+        if (ctx.ParseResult.GetValueForOption(CliRoot.DryRunOption)) { ctx.ExitCode = 0; return; }
         if (clear)
-            store.PatchItem(c, null, row.Id, null, null, null, null, null, null, null, null, true, null, null, null);
+        {
+            var restoredStatus = row.Status == "in_progress" ? "in_progress" : "ready";
+            store.PatchItem(c, null, row.Id, null, restoredStatus, null, null, null, null, null, null, true, null, null, null);
+        }
         else if (!string.IsNullOrEmpty(until))
-            store.PatchItem(c, null, row.Id, null, null, null, null, null, null, null, until, false, null, null, null);
+            store.PatchItem(c, null, row.Id, null, "blocked", null, null, null, null, null, until, false, null, null, null);
         else
         {
             if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", "use --until or --clear");
@@ -713,15 +727,29 @@ internal static class HandlersItem
         ctx.ExitCode = 0;
     }
 
-    public static void ItemStart(string? id, string? @ref, string assignee, InvocationContext ctx)
+    public static void ItemStart(string? id, string? @ref, string assignee, bool force, InvocationContext ctx)
     {
         if (!OpenDb(ctx, out var store, out var c, out var pid) || pid is null) return;
         var row = Resolve(store, c, pid, id, @ref);
         if (row is null) { Err(ctx, "not_found", "Item not found"); return; }
+        if (row.Status is "done" or "cancelled")
+        {
+            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", "cannot start terminal items");
+            else Console.Error.WriteLine("cannot start terminal items");
+            ctx.ExitCode = 2;
+            return;
+        }
         if (!string.IsNullOrEmpty(row.AssignedTo) && row.AssignedTo != assignee)
         {
             if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("claim_conflict", "Item claimed by another assignee");
             ctx.ExitCode = 5;
+            return;
+        }
+        if (!force && !store.PredecessorsSatisfied(c, row.Id))
+        {
+            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", "predecessors not satisfied; use --force");
+            else Console.Error.WriteLine("predecessors not satisfied; use --force");
+            ctx.ExitCode = 2;
             return;
         }
         if (ctx.ParseResult.GetValueForOption(CliRoot.DryRunOption)) { ctx.ExitCode = 0; return; }
@@ -775,6 +803,13 @@ internal static class HandlersItem
         if (!OpenDb(ctx, out var store, out var c, out var pid) || pid is null) return;
         var row = Resolve(store, c, pid, id, @ref);
         if (row is null) { Err(ctx, "not_found", "Item not found"); return; }
+        if (!force && row.Status != "in_progress")
+        {
+            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", "item must be in_progress; use --force");
+            else Console.Error.WriteLine("item must be in_progress; use --force");
+            ctx.ExitCode = 2;
+            return;
+        }
         if (!force && !store.ChildrenAllTerminal(c, row.Id))
         {
             if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption)) JsonOut.WriteErr("validation", "children not terminal; use --force");
