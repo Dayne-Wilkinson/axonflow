@@ -195,6 +195,112 @@ public class ItemCliTests
         }
     }
 
+    [Fact]
+    public async Task Item_lifecycle_enforces_start_before_complete_and_defer_sets_blocked_then_ready()
+    {
+        var db = Path.Combine(Path.GetTempPath(), $"axonflow-itemcli-lifecycle-{Guid.NewGuid():N}.db");
+        try
+        {
+            var parser = CreateParser();
+            Assert.Equal(0, await parser.InvokeAsync(new[] { "init", "--db", db }));
+
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "item", "add", "--db", db, "--project", "default", "--type", "task", "--title", "Lifecycle item", "--json"
+            }));
+
+            Assert.Equal(2, await parser.InvokeAsync(new[]
+            {
+                "item", "complete", "--db", db, "--project", "default", "--ref", "AF-1", "--json"
+            }));
+
+            var (deferCode, deferJson) = await InvokeStdoutJsonLine(parser, new[]
+            {
+                "item", "defer", "--db", db, "--project", "default", "--ref", "AF-1", "--until", "2030-01-01T00:00:00Z", "--json"
+            });
+            Assert.Equal(0, deferCode);
+            using (var doc = JsonDocument.Parse(deferJson))
+            {
+                Assert.Equal("blocked", doc.RootElement.GetProperty("data").GetProperty("status").GetString());
+            }
+
+            var (clearCode, clearJson) = await InvokeStdoutJsonLine(parser, new[]
+            {
+                "item", "defer", "--db", db, "--project", "default", "--ref", "AF-1", "--clear", "--json"
+            });
+            Assert.Equal(0, clearCode);
+            using (var doc = JsonDocument.Parse(clearJson))
+            {
+                Assert.Equal("ready", doc.RootElement.GetProperty("data").GetProperty("status").GetString());
+            }
+
+            var (startCode, startJson) = await InvokeStdoutJsonLine(parser, new[]
+            {
+                "item", "start", "--db", db, "--project", "default", "--ref", "AF-1", "--assignee", "agent:test", "--json"
+            });
+            Assert.Equal(0, startCode);
+            using (var doc = JsonDocument.Parse(startJson))
+            {
+                Assert.Equal("in_progress", doc.RootElement.GetProperty("data").GetProperty("status").GetString());
+            }
+
+            var (completeCode, completeJson) = await InvokeStdoutJsonLine(parser, new[]
+            {
+                "item", "complete", "--db", db, "--project", "default", "--ref", "AF-1", "--json"
+            });
+            Assert.Equal(0, completeCode);
+            using (var doc = JsonDocument.Parse(completeJson))
+            {
+                Assert.Equal("done", doc.RootElement.GetProperty("data").GetProperty("status").GetString());
+            }
+        }
+        finally
+        {
+            try { File.Delete(db); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Item_start_requires_predecessors_unless_forced()
+    {
+        var db = Path.Combine(Path.GetTempPath(), $"axonflow-itemcli-start-force-{Guid.NewGuid():N}.db");
+        try
+        {
+            var parser = CreateParser();
+            Assert.Equal(0, await parser.InvokeAsync(new[] { "init", "--db", db }));
+
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "item", "add", "--db", db, "--project", "default", "--type", "task", "--title", "Pred", "--json"
+            }));
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "item", "add", "--db", db, "--project", "default", "--type", "task", "--title", "Succ", "--json"
+            }));
+            Assert.Equal(0, await parser.InvokeAsync(new[]
+            {
+                "dep", "add", "--db", db, "--project", "default", "--predecessor", "AF-1", "--successor", "AF-2", "--json"
+            }));
+
+            Assert.Equal(2, await parser.InvokeAsync(new[]
+            {
+                "item", "start", "--db", db, "--project", "default", "--ref", "AF-2", "--assignee", "agent:test", "--json"
+            }));
+
+            var (forcedCode, forcedJson) = await InvokeStdoutJsonLine(parser, new[]
+            {
+                "item", "start", "--db", db, "--project", "default", "--ref", "AF-2", "--assignee", "agent:test", "--force", "--json"
+            });
+            Assert.Equal(0, forcedCode);
+            using var doc = JsonDocument.Parse(forcedJson);
+            Assert.Equal("in_progress", doc.RootElement.GetProperty("data").GetProperty("status").GetString());
+        }
+        finally
+        {
+            try { File.Delete(db); } catch { /* ignore */ }
+        }
+    }
+
     private static Task<(int Code, string JsonLine)> InvokeStdoutJsonLine(Parser parser, string[] args)
     {
         lock (ConsoleRedirectGate)

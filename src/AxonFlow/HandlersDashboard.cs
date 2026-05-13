@@ -22,11 +22,13 @@ internal static partial class HandlersDashboard
     {
         var dashboard = new Command("dashboard",
             "Read-only dashboard on loopback HTTP (live data refreshes automatically; Ctrl+C to stop)");
-        dashboard.SetHandler(async ctx => await RunDashboardCommandAsync(ctx).ConfigureAwait(false));
+        var pollSecondsOpt = new Option<int>("--poll-seconds", () => 10, "Polling interval in seconds (1-300)");
+        dashboard.AddOption(pollSecondsOpt);
+        dashboard.SetHandler(async ctx => await RunDashboardCommandAsync(ctx, ctx.ParseResult.GetValueForOption(pollSecondsOpt)).ConfigureAwait(false));
         root.AddCommand(dashboard);
     }
 
-    private static async Task RunDashboardCommandAsync(InvocationContext ctx)
+    private static async Task RunDashboardCommandAsync(InvocationContext ctx, int pollSeconds)
     {
         if (ctx.ParseResult.GetValueForOption(CliRoot.DryRunOption))
         {
@@ -38,8 +40,18 @@ internal static partial class HandlersDashboard
             return;
         }
 
+        if (pollSeconds < 1 || pollSeconds > 300)
+        {
+            if (ctx.ParseResult.GetValueForOption(CliRoot.JsonOption))
+                JsonOut.WriteErr("validation", "--poll-seconds must be between 1 and 300");
+            else
+                Console.Error.WriteLine("--poll-seconds must be between 1 and 300");
+            ctx.ExitCode = 2;
+            return;
+        }
+
         const string listenUrl = "http://127.0.0.1:5057";
-        await RunServeAsync(ctx, Paths.DashboardServeCacheDirectory(), listenUrl, pollSeconds: 120).ConfigureAwait(false);
+        await RunServeAsync(ctx, Paths.DashboardServeCacheDirectory(), listenUrl, pollSeconds).ConfigureAwait(false);
     }
 
     /// <summary>Minimal HTML so old <c>mindmap.html</c> paths redirect to <c>tree.html</c>.</summary>
@@ -312,6 +324,12 @@ __META_REFRESH__
     .counts { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; }
     .counts span { color: var(--muted); }
     .counts strong { color: var(--text); }
+    .refresh-meta { color: var(--muted); font-size: 0.75rem; margin-top: 0.25rem; }
+    .status-warning {
+      display: none; border: 1px solid #6e5200; background: rgba(210, 153, 34, 0.12);
+      color: #f2cc60; border-radius: 6px; padding: 0.45rem 0.6rem; font-size: 0.78rem;
+    }
+    .status-warning.show { display: block; }
     main { padding: 1rem; display: grid; gap: 1rem; }
     .board {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;
@@ -387,6 +405,7 @@ __META_REFRESH__
       <h1>AxonFlow dashboard</h1>
       <nav class="nav-links" aria-label="Page navigation"><a href="tree.html">Tree view</a></nav>
       <div class="meta" id="hdr-meta"></div>
+      <div class="refresh-meta" id="refresh-meta"></div>
       <div class="type-legend" id="type-legend" hidden>
         Types: epic · feature · story · task · bug · chore (badges + left stripe; not color-only — labels in cards)
       </div>
@@ -398,6 +417,7 @@ __META_REFRESH__
     <div class="counts" id="counts"></div>
   </header>
   <main>
+    <section class="status-warning" id="status-warning" role="status" aria-live="polite"></section>
     <section class="board" id="board" aria-label="Work board"></section>
   </main>
   <div id="detail-overlay" class="detail-overlay" hidden aria-hidden="true">
@@ -450,6 +470,8 @@ __FOOTER__
   const cols = ['backlog', 'ready', 'in_progress', 'blocked', 'done', 'cancelled'];
   const board = document.getElementById('board');
   const counts = document.getElementById('counts');
+  const refreshMeta = document.getElementById('refresh-meta');
+  const statusWarning = document.getElementById('status-warning');
   const detailOverlay = document.getElementById('detail-overlay');
   const detailDialog = document.getElementById('detail-dialog');
   const detailBackdrop = document.getElementById('detail-backdrop');
@@ -462,6 +484,8 @@ __FOOTER__
   let currentSlug = null;
   let lastFocusedCard = null;
   let detailUiBound = false;
+  let lastRefreshAt = null;
+  let lastRefreshError = null;
 
   function closeDetailPopup() {
     detailOverlay.hidden = true;
@@ -506,6 +530,65 @@ __FOOTER__
     const d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
+  }
+
+  function normToken(s) {
+    return String(s == null ? '' : s).trim().toLowerCase().replace(/[-\s]+/g, '_');
+  }
+
+  function laneForStatus(rawStatus) {
+    const token = normToken(rawStatus);
+    if (!token) return null;
+    if (token === 'active' || token === 'inprogress' || token === 'wip') return 'in_progress';
+    if (token === 'complete' || token === 'completed') return 'done';
+    if (token === 'cancel' || token === 'canceled') return 'cancelled';
+    if (cols.indexOf(token) >= 0) return token;
+    return null;
+  }
+
+  function classifyItems(items) {
+    const byStatus = Object.fromEntries(cols.map(function (c) { return [c, []]; }));
+    const unknown = [];
+    for (const it of items || []) {
+      const lane = laneForStatus(it.status);
+      if (lane) byStatus[lane].push(it);
+      else unknown.push(it);
+    }
+    for (const k of cols) {
+      byStatus[k].sort(function (a, b) {
+        return (a.priority - b.priority) || (a.ref && b.ref ? a.ref.localeCompare(b.ref) : 0);
+      });
+    }
+    unknown.sort(function (a, b) {
+      return (a.priority - b.priority) || (a.ref && b.ref ? a.ref.localeCompare(b.ref) : 0);
+    });
+    return { byStatus: byStatus, unknown: unknown };
+  }
+
+  function openCount(items) {
+    return (items || []).filter(function (it) {
+      const lane = laneForStatus(it.status);
+      return lane !== 'done' && lane !== 'cancelled';
+    }).length;
+  }
+
+  function blockedOrActiveCount(items) {
+    return (items || []).filter(function (it) {
+      const lane = laneForStatus(it.status);
+      return lane === 'blocked' || lane === 'in_progress';
+    }).length;
+  }
+
+  function updateRefreshMeta() {
+    if (!served) {
+      refreshMeta.textContent = '';
+      return;
+    }
+    let text = 'Refresh: ';
+    if (lastRefreshAt) text += lastRefreshAt.toLocaleTimeString();
+    else text += 'waiting...';
+    if (lastRefreshError) text += ' · last error: ' + lastRefreshError;
+    refreshMeta.textContent = text;
   }
 
   function typeBadgeClass(tp) {
@@ -572,6 +655,8 @@ __FOOTER__
 
   function renderLegacy() {
     projectRow.style.display = 'none';
+    statusWarning.className = 'status-warning';
+    statusWarning.textContent = '';
     currentSlug = null;
     const items = data.items || [];
     const deps = data.dependencies || [];
@@ -581,21 +666,16 @@ __FOOTER__
       'Project: ' + projLabel +
       ' · Generated: ' + (data.generatedAt || '') +
       ' · ' + pfx + '-*';
-    const byStatus = Object.fromEntries(cols.map(function (c) { return [c, []]; }));
-    for (const it of items) {
-      if (byStatus[it.status]) byStatus[it.status].push(it);
-    }
-    for (const k of cols) {
-      byStatus[k].sort(function (a, b) {
-        return (a.priority - b.priority) || (a.ref && b.ref ? a.ref.localeCompare(b.ref) : 0);
-      });
-    }
-    const open = items.filter(function (i) { return i.status !== 'done' && i.status !== 'cancelled'; }).length;
+    const grouped = classifyItems(items);
+    const byStatus = grouped.byStatus;
+    const unknown = grouped.unknown;
+    const open = openCount(items);
     counts.innerHTML =
       '<span>Open <strong>' + open + '</strong></span>' +
       cols.map(function (c) {
         return '<span>' + esc(c.replace('_', ' ')) + ' <strong>' + byStatus[c].length + '</strong></span>';
-      }).join('');
+      }).join('') +
+      '<span>unknown <strong>' + unknown.length + '</strong></span>';
     board.innerHTML = '';
     for (const c of cols) {
       const col = document.createElement('section');
@@ -603,6 +683,14 @@ __FOOTER__
       col.innerHTML = '<h2>' + esc(c.replace('_', ' ')) + '</h2><div class="cards" data-status="' + esc(c) + '"></div>';
       const cards = col.querySelector('.cards');
       for (const it of byStatus[c]) cards.insertAdjacentHTML('beforeend', cardHtml(it, false));
+      board.appendChild(col);
+    }
+    if (unknown.length) {
+      const col = document.createElement('section');
+      col.className = 'col';
+      col.innerHTML = '<h2>unknown</h2><div class="cards" data-status="unknown"></div>';
+      const cards = col.querySelector('.cards');
+      for (const it of unknown) cards.insertAdjacentHTML('beforeend', cardHtml(it, false));
       board.appendChild(col);
     }
     wireBoardClicks(items, deps);
@@ -623,9 +711,11 @@ __FOOTER__
       const prev = currentSlug;
       projectSelect.innerHTML = '';
       for (const p of data.projects || []) {
+        const projectItems = (data.itemsByProjectSlug[p.slug] && data.itemsByProjectSlug[p.slug].items) || [];
+        const projectOpen = openCount(projectItems);
         const opt = document.createElement('option');
         opt.value = p.slug;
-        opt.textContent = p.name + ' (' + p.slug + ', ' + p.refPrefix + ')';
+        opt.textContent = p.name + ' (' + p.slug + ', ' + p.refPrefix + ', open ' + projectOpen + ')';
         projectSelect.appendChild(opt);
       }
       if (data.itemsByProjectSlug[prev]) currentSlug = prev;
@@ -645,21 +735,16 @@ __FOOTER__
     function renderBoard() {
       const items = bundle().items || [];
       const deps = bundle().dependencies || [];
-      const byStatus = Object.fromEntries(cols.map(function (c) { return [c, []]; }));
-      for (const it of items) {
-        if (byStatus[it.status]) byStatus[it.status].push(it);
-      }
-      for (const k of cols) {
-        byStatus[k].sort(function (a, b) {
-          return (a.priority - b.priority) || (a.ref && b.ref ? a.ref.localeCompare(b.ref) : 0);
-        });
-      }
-      const open = items.filter(function (i) { return i.status !== 'done' && i.status !== 'cancelled'; }).length;
+      const grouped = classifyItems(items);
+      const byStatus = grouped.byStatus;
+      const unknown = grouped.unknown;
+      const open = openCount(items);
       counts.innerHTML =
         '<span>Open <strong>' + open + '</strong></span>' +
         cols.map(function (c) {
           return '<span>' + esc(c.replace('_', ' ')) + ' <strong>' + byStatus[c].length + '</strong></span>';
-        }).join('');
+        }).join('') +
+        '<span>unknown <strong>' + unknown.length + '</strong></span>';
       board.innerHTML = '';
       for (const c of cols) {
         const col = document.createElement('section');
@@ -668,6 +753,28 @@ __FOOTER__
         const cards = col.querySelector('.cards');
         for (const it of byStatus[c]) cards.insertAdjacentHTML('beforeend', cardHtml(it, false));
         board.appendChild(col);
+      }
+      if (unknown.length) {
+        const col = document.createElement('section');
+        col.className = 'col';
+        col.innerHTML = '<h2>unknown</h2><div class="cards" data-status="unknown"></div>';
+        const cards = col.querySelector('.cards');
+        for (const it of unknown) cards.insertAdjacentHTML('beforeend', cardHtml(it, false));
+        board.appendChild(col);
+      }
+      const currentActive = blockedOrActiveCount(items);
+      let otherActive = 0;
+      for (const p of data.projects || []) {
+        if (p.slug === currentSlug) continue;
+        const otherItems = (data.itemsByProjectSlug[p.slug] && data.itemsByProjectSlug[p.slug].items) || [];
+        otherActive += blockedOrActiveCount(otherItems);
+      }
+      if (currentActive == 0 && otherActive > 0) {
+        statusWarning.className = 'status-warning show';
+        statusWarning.textContent = 'No active/blocked items in this project, but ' + otherActive + ' active/blocked item(s) exist in other projects. Check the project picker.';
+      } else {
+        statusWarning.className = 'status-warning';
+        statusWarning.textContent = '';
       }
       wireBoardClicks(items, deps);
     }
@@ -704,16 +811,28 @@ __FOOTER__
     try {
       if (served) {
         data = await loadSnapshotFromApi();
+        lastRefreshAt = new Date();
+        lastRefreshError = null;
+        updateRefreshMeta();
         window.__axonflowReload = async function () {
-          data = await loadSnapshotFromApi();
-          rerenderAll();
+          try {
+            data = await loadSnapshotFromApi();
+            lastRefreshAt = new Date();
+            lastRefreshError = null;
+            rerenderAll();
+          } catch (e) {
+            lastRefreshError = e && e.message ? e.message : String(e);
+            updateRefreshMeta();
+            throw e;
+          }
         };
         setInterval(function () {
           window.__axonflowReload().catch(function (e) { console.error(e); });
-        }, (bootstrapData.pollSeconds || 120) * 1000);
+        }, (bootstrapData.pollSeconds || 10) * 1000);
       } else {
         data = bootstrapData;
       }
+      updateRefreshMeta();
       if (data.schemaVersion >= 2 && data.itemsByProjectSlug && data.projects) {
         renderMulti();
       } else {
